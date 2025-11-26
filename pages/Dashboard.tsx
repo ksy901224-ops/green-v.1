@@ -5,12 +5,13 @@ import LogCard from '../components/LogCard';
 import { CalendarView } from '../components/CalendarView';
 import { CalendarSettingsModal } from '../components/CalendarSettingsModal';
 import { Department, LogEntry } from '../types';
-import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2 } from 'lucide-react';
+import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2, Search, Sparkles } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { addTodo } from '../services/firestoreService';
+import { searchAppWithAI } from '../services/geminiService';
 
 const Dashboard: React.FC = () => {
-  const { logs, user } = useApp(); // Use shared logs from context
+  const { logs, courses, people, user } = useApp(); // Use shared logs from context
   
   const [filterDept, setFilterDept] = useState<Department | 'ALL'>('ALL');
   const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'course'>('list');
@@ -29,6 +30,28 @@ const Dashboard: React.FC = () => {
   // --- TODO Widget State ---
   const [todoText, setTodoText] = useState('');
   const [isTodoSubmitting, setIsTodoSubmitting] = useState(false);
+
+  // --- AI Search State ---
+  const [aiSearchQuery, setAiSearchQuery] = useState('');
+  const [aiSearchResult, setAiSearchResult] = useState<string | null>(null);
+  const [isAiSearching, setIsAiSearching] = useState(false);
+
+  const handleAiSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiSearchQuery.trim()) return;
+
+    setIsAiSearching(true);
+    setAiSearchResult(null);
+
+    try {
+      const result = await searchAppWithAI(aiSearchQuery, { logs, courses, people });
+      setAiSearchResult(result);
+    } catch (error) {
+      setAiSearchResult("검색 중 오류가 발생했습니다.");
+    } finally {
+      setIsAiSearching(false);
+    }
+  };
 
   const handleAddTodo = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -190,6 +213,43 @@ const Dashboard: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* --- AI SMART SEARCH WIDGET --- */}
+        <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-5 rounded-xl shadow-lg text-white">
+          <div className="flex items-center mb-3">
+             <Sparkles className="text-yellow-300 mr-2" size={20} />
+             <h3 className="font-bold text-lg">AI 통합 데이터 검색</h3>
+          </div>
+          <p className="text-indigo-100 text-sm mb-4">
+             "김철수 팀장의 최근 이슈가 뭐야?", "스카이뷰 CC 공사 현황 알려줘" 처럼 물어보세요.
+             <span className="opacity-70 text-xs ml-2">(DB에 저장된 일지와 정보를 기반으로 답변합니다)</span>
+          </p>
+          
+          <form onSubmit={handleAiSearch} className="relative">
+            <input 
+               type="text" 
+               value={aiSearchQuery}
+               onChange={(e) => setAiSearchQuery(e.target.value)}
+               placeholder="무엇이든 물어보세요..."
+               className="w-full pl-10 pr-24 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 focus:ring-2 focus:ring-yellow-400 backdrop-blur-sm transition-all"
+            />
+            <Search className="absolute left-3 top-3.5 text-indigo-200" size={20} />
+            <button 
+               type="submit"
+               disabled={isAiSearching || !aiSearchQuery.trim()}
+               className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-white text-indigo-700 rounded-md font-bold text-sm hover:bg-indigo-50 transition-colors disabled:opacity-70 flex items-center"
+            >
+               {isAiSearching ? <Loader2 size={16} className="animate-spin" /> : '검색'}
+            </button>
+          </form>
+
+          {aiSearchResult && (
+             <div className="mt-4 bg-black/20 rounded-lg p-4 text-sm leading-relaxed border border-white/10 animate-in fade-in slide-in-from-top-2 whitespace-pre-wrap">
+                {aiSearchResult}
+             </div>
+          )}
+        </div>
+        {/* --------------------------- */}
 
         {/* --- To-Do Input Widget (Firebase) --- */}
         <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-white to-brand-50/30">

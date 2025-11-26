@@ -412,3 +412,63 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
     throw new Error("골프장 정보를 가져오는 데 실패했습니다.");
   }
 };
+
+/**
+ * Searches through the application's stored data using Gemini AI.
+ * Uses the fast 'gemini-2.5-flash-lite' model for quick lookups.
+ */
+export const searchAppWithAI = async (query: string, appContextData: {
+  logs: LogEntry[],
+  courses: GolfCourse[],
+  people: Person[]
+}): Promise<string> => {
+  if (!process.env.API_KEY) {
+    throw new Error("API Key가 필요합니다.");
+  }
+
+  // Serialize the context data to a string format the AI can understand
+  // Minimizing tokens by selecting only relevant fields could be an optimization,
+  // but sending the JSON structure is usually efficient enough for this scale.
+  const contextString = JSON.stringify({
+    courses: appContextData.courses.map(c => ({ name: c.name, type: c.type, desc: c.description })),
+    people: appContextData.people.map(p => ({ name: p.name, role: p.currentRole, notes: p.notes })),
+    recent_logs: appContextData.logs.slice(0, 20).map(l => ({ // Limit to recent 20 logs to save context window
+      date: l.date,
+      course: l.courseName,
+      title: l.title,
+      content: l.content
+    }))
+  });
+
+  const prompt = `
+    You are an intelligent internal search engine for a Golf Course Management System.
+    The user is asking a question about their stored data.
+    
+    [User Query]: "${query}"
+
+    [Database Context]:
+    ${contextString}
+
+    [Instructions]:
+    1. Search through the provided Database Context to find the answer.
+    2. Answer strictly based on the provided data. Do not use outside knowledge unless it's general common sense.
+    3. If the answer is found, summarize it clearly in Korean. 
+       - Cite the source (e.g., "From the log on 2024-05-20...").
+    4. If the information is not in the database, explicitly state: "시스템 데이터에서 관련 정보를 찾을 수 없습니다."
+    5. Be concise and professional.
+  `;
+
+  try {
+    const response = await retryOperation(async () => {
+      return await ai.models.generateContent({
+        model: 'gemini-2.5-flash-lite', // Using the fast model as requested
+        contents: prompt,
+      });
+    });
+
+    return response.text || "답변을 생성할 수 없습니다.";
+  } catch (error) {
+    console.error("AI Search Error:", error);
+    throw new Error("AI 검색 중 오류가 발생했습니다.");
+  }
+};
