@@ -155,9 +155,10 @@ export interface AnalyzedLogData {
   project_name?: string;
   contact_person?: string;
   delivery_date?: string;
-  key_issues?: string[]; // New field for specific issues
-  participants?: string[]; // New: People extracted
-  weather?: string; // New: Weather info if present
+  key_issues?: string[]; 
+  participants?: string[]; 
+  weather?: string;
+  summary_report?: string; // New: Deep summary report
   course_info?: { // New field for auto-creating courses
     address?: string;
     holes?: number;
@@ -185,6 +186,7 @@ const validateAnalyzedData = (data: any): AnalyzedLogData => {
     key_issues: Array.isArray(data.key_issues) ? data.key_issues : [],
     participants: Array.isArray(data.participants) ? data.participants : [],
     weather: typeof data.weather === 'string' ? data.weather : undefined,
+    summary_report: typeof data.summary_report === 'string' ? data.summary_report : undefined,
     course_info: data.course_info || {},
   };
 };
@@ -244,10 +246,10 @@ export const analyzeDocument = async (
       이 데이터는 골프장 관리, 건설 공사, 영업 일지, 또는 메신저 대화 내용입니다. 
       입력된 데이터 형식(PDF, 이미지, 텍스트)에 맞춰 내용을 심층 분석하여 JSON **배열(Array)** 형식으로 추출해주세요.
 
-      [중요: 다중 골프장 분리 규칙]
-      - **만약 2개 이상의 골프장 이야기가 섞여 있다면, 반드시 내용을 분리하여 각각 별도의 객체(Object)로 만드세요.**
+      [중요: 다중 골프장 자동 감지 및 분리]
+      - **하나의 파일/텍스트에 여러 골프장의 정보가 섞여 있는 경우, 반드시 골프장별로 내용을 분리하여 각각 별도의 객체(Object)로 만드세요.**
       - 예: "A골프장은 배수공사 완료했고, B골프장은 견적 미팅함" -> [{courseName: "A", ...}, {courseName: "B", ...}]
-      - 각 골프장별로 이슈와 상세 내용을 독립적으로 분석해야 합니다. 뭉뚱그려서 요약하지 마세요.
+      - 뭉뚱그려 하나로 합치지 마세요. 각 골프장 별로 이슈를 개별적으로 분석해야 합니다.
 
       [골프장 식별 및 신규 생성 규칙 (Entity Resolution & Creation)]
       현재 데이터베이스에 등록된 골프장 목록: [${existingCourseNames.join(', ')}]
@@ -273,14 +275,17 @@ export const analyzeDocument = async (
       10. participants: 회의 참석자나 관련 인물 이름 목록 (Array).
       11. weather: 날씨 정보가 있다면 추출 (없으면 null).
 
-      [심층 분석 및 인사이트 (Deep Insights)]
+      [심층 분석 및 인사이트 (Deep Insights - Per Course)]
       12. key_issues: **해당 골프장에 특화된** 핵심 이슈 3~5가지.
-          - 일반적인 내용은 지양하고, 구체적인 수치, 문제점, 경쟁사 동향 등을 심층적으로 추출하세요.
-          - **Risk Assessment**: 잠재적 리스크 (안전 사고, 공기 지연, 예산 초과, 민원 발생 가능성 등).
-          - **Competitor Intelligence**: 경쟁사 활동 감지 (타사 접촉, 견적 비교 정황, 경쟁 제품 언급).
+          - 일반론적인 이야기가 아닌, 해당 골프장의 구체적인 문제(예: 5번홀 배수 불량, A업체 저가 수주 시도)를 짚어내세요.
+          - **Risk Assessment**: 공기 지연, 민원, 안전 사고 등 리스크 요인.
+          - **Competitor Intelligence**: 경쟁사 동향 포착.
+      
+      13. **summary_report**: (필수) 해당 건에 대한 심층 요약 리포트 (3~4문장).
+          - "무엇이 문제이고, 어떤 맥락이며, 향후 어떤 조치가 필요한지"를 관리자에게 보고하듯이 작성하세요.
 
       [신규 골프장 정보 자동 등록 (Auto-Registration Info)]
-      13. course_info: **만약 위에서 식별한 courseName이 기존 목록에 없는 새로운 골프장인 경우에만** 아래 정보를 추출하세요. 기존 골프장이라면 빈 객체({})로 반환.
+      14. course_info: **만약 위에서 식별한 courseName이 기존 목록에 없는 새로운 골프장인 경우에만** 아래 정보를 추출하세요. 기존 골프장이라면 빈 객체({})로 반환.
           - address: 주소 (시/군/구 단위).
           - holes: 홀 수 (추정 불가시 18).
           - type: (회원제, 대중제). 추정 불가시 '대중제'.
@@ -315,6 +320,7 @@ export const analyzeDocument = async (
                 weather: { type: Type.STRING, description: "날씨", nullable: true },
                 tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "태그 목록" },
                 key_issues: { type: Type.ARRAY, items: { type: Type.STRING }, description: "핵심 이슈 및 리스크" },
+                summary_report: { type: Type.STRING, description: "심층 요약 및 제언 리포트" },
                 course_info: {
                     type: Type.OBJECT,
                     properties: {
@@ -326,7 +332,7 @@ export const analyzeDocument = async (
                     description: "신규 골프장일 경우에만 채워짐"
                 }
                 },
-                required: ["title", "content", "date", "department", "courseName", "tags"]
+                required: ["title", "content", "date", "department", "courseName", "tags", "summary_report"]
             }
           }
         }
@@ -378,6 +384,8 @@ export interface AICourseDetails {
   type: CourseType;
   grassType: GrassType;
   description: string;
+  lat?: number;
+  lng?: number;
 }
 
 export const getCourseDetailsFromAI = async (courseName: string): Promise<AICourseDetails> => {
@@ -385,21 +393,24 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
     throw new Error("API Key가 필요합니다.");
   }
 
-  // Enhanced prompt to simulate Naver Maps lookup
+  // Enhanced prompt to simulate Naver Maps lookup with GPS
   const prompt = `
-    당신은 한국 골프장 데이터베이스 전문가입니다. 
+    당신은 한국 골프장 데이터베이스 및 지도 전문가입니다. 
     "${courseName}"라는 골프장을 네이버 지도(Naver Maps)나 공식 웹사이트에서 검색한다고 가정하고, 다음 정보를 정확하게 추출해주세요.
 
     요구사항:
     1. **주소**: 반드시 '도로명 주소'를 우선으로 찾아주세요. (예: 경기도 여주시 북내면 여양1로 500)
-    2. **홀 수**: 총 홀 수(Holes)를 정확히 기재하세요. (18, 27, 36 등)
-    3. **운영 형태**: '회원제'인지 '대중제(퍼블릭)'인지 구분하세요.
-    4. **잔디 종류**: 한국잔디(중지/금잔디)인지 양잔디(벤트그라스/켄터키블루그라스)인지 확인하고, 모르면 '혼합'으로 하세요.
-    5. **설명**: 골프장의 지형적 특징(산악형, 평지형, 링크스 등), 난이도, 주요 이슈를 2문장 내외로 요약하세요.
+    2. **GPS 좌표**: 해당 주소의 대략적인 위도(lat)와 경도(lng)를 추정하여 제공하세요. (소수점 6자리까지)
+    3. **홀 수**: 총 홀 수(Holes)를 정확히 기재하세요. (18, 27, 36 등)
+    4. **운영 형태**: '회원제'인지 '대중제(퍼블릭)'인지 구분하세요.
+    5. **잔디 종류**: 한국잔디(중지/금잔디)인지 양잔디(벤트그라스/켄터키블루그라스)인지 확인하고, 모르면 '혼합'으로 하세요.
+    6. **설명**: 골프장의 지형적 특징(산악형, 평지형, 링크스 등), 난이도, 주요 이슈를 2문장 내외로 요약하세요.
 
     Response Schema (JSON):
     {
       "address": "도로명 주소 (필수)",
+      "lat": 위도(숫자),
+      "lng": 경도(숫자),
       "holes": 숫자,
       "type": "회원제" 또는 "대중제",
       "grassType": "한국잔디", "벤트그라스", "캔터키블루그라스", 또는 "혼합",
@@ -418,6 +429,8 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
             type: Type.OBJECT,
             properties: {
               address: { type: Type.STRING },
+              lat: { type: Type.NUMBER },
+              lng: { type: Type.NUMBER },
               holes: { type: Type.NUMBER },
               type: { type: Type.STRING },
               grassType: { type: Type.STRING },
@@ -449,6 +462,8 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
 
     return {
       address: data.address || '',
+      lat: data.lat,
+      lng: data.lng,
       holes: data.holes || 18,
       type: mapType(data.type),
       grassType: mapGrass(data.grassType),

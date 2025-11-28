@@ -1,13 +1,13 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Department, GolfCourse, CourseType, GrassType, LogEntry, Person, AffinityLevel, ExternalEvent } from '../types';
-import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, Users, CheckCircle, AlertCircle, PlusSquare, Zap, AlertTriangle, Clock, Globe, Map, ArrowLeft, Calendar, FileType, AlignLeft, CalendarPlus, ListChecks } from 'lucide-react';
+import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, Users, CheckCircle, AlertCircle, PlusSquare, Zap, AlertTriangle, Clock, Globe, Map, ArrowLeft, Calendar, FileType, AlignLeft, CalendarPlus, ListChecks, RefreshCcw } from 'lucide-react';
 import { analyzeDocument, getCourseDetailsFromAI } from '../services/geminiService';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
 
 const WriteLog: React.FC = () => {
-  const { addLog, updateLog, addCourse, addPerson, addExternalEvent, courses: globalCourses, people: globalPeople } = useApp();
+  const { addLog, updateLog, addCourse, updateCourse, addPerson, addExternalEvent, courses: globalCourses, people: globalPeople } = useApp();
   const navigate = useNavigate();
   const location = useLocation();
   const editingLog = location.state?.log as LogEntry | undefined;
@@ -61,6 +61,8 @@ const WriteLog: React.FC = () => {
     fields?: { label: string; value: string }[];
     isNewCourse?: boolean;
     multiLogCount?: number; // To track if multiple logs were created
+    summaryReport?: string; // New: AI Summary Report
+    retryAction?: () => void; // Allow retry on error
   } | null>(null);
 
   const [highlightedFields, setHighlightedFields] = useState<Set<string>>(new Set());
@@ -78,12 +80,12 @@ const WriteLog: React.FC = () => {
     }
   }, [editingLog]);
 
-  // Auto-dismiss success feedback
+  // Auto-dismiss success feedback (Disabled auto-dismiss if there's a summary to read)
   useEffect(() => {
-    if (feedback?.type === 'success') {
+    if (feedback?.type === 'success' && !feedback.summaryReport) {
       const timer = setTimeout(() => {
         setFeedback(null);
-      }, 12000); // Increased dismiss time for better reading
+      }, 12000); 
       return () => clearTimeout(timer);
     }
   }, [feedback]);
@@ -133,7 +135,7 @@ const WriteLog: React.FC = () => {
 
     setFeedback(null);
     setUploadProgress(0);
-    setStatusMessage('데이터 준비 중...');
+    setStatusMessage('데이터 준비 및 검증 중...');
     setHighlightedFields(new Set());
     setIsAnalyzing(true);
     setContactPerson(''); // Reset contact person on new analysis
@@ -155,7 +157,11 @@ const WriteLog: React.FC = () => {
             const isExtValid = validExtensions.includes(fileExtension);
 
             if (!isMimeValid && !isExtValid) {
-                setFeedback({type: 'error', title: '지원하지 않는 파일 형식', message: 'PDF 또는 이미지 파일만 가능합니다.'});
+                setFeedback({
+                    type: 'error', 
+                    title: '지원하지 않는 파일 형식', 
+                    message: 'PDF 문서 또는 이미지 파일(JPG, PNG)만 분석 가능합니다.'
+                });
                 setIsAnalyzing(false); return;
             }
 
@@ -165,7 +171,7 @@ const WriteLog: React.FC = () => {
                 reader.onprogress = (event) => {
                     if (event.lengthComputable) {
                         setUploadProgress(Math.round((event.loaded / event.total) * 30));
-                        setStatusMessage('파일 업로드 중...');
+                        setStatusMessage('파일 서버 전송 중...');
                     }
                 };
                 reader.onloadend = () => {
@@ -180,8 +186,8 @@ const WriteLog: React.FC = () => {
             const fileResult = await readPromise;
             base64Data = fileResult.base64;
             mimeType = fileResult.type;
-            setUploadProgress(30);
-            setStatusMessage('AI 서버로 전송 완료, 분석 시작...');
+            setUploadProgress(35);
+            setStatusMessage('AI 분석 엔진 가동 중...');
         } else {
             setUploadProgress(30);
             setStatusMessage('텍스트 데이터 분석 시작...');
@@ -191,9 +197,14 @@ const WriteLog: React.FC = () => {
         progressInterval = setInterval(() => {
             setUploadProgress(prev => {
                 if (prev >= 90) return prev;
-                return prev + (prev < 60 ? 5 : 1); 
+                // Faster progress initially, then slow down
+                return prev + (prev < 60 ? 3 : 1); 
             });
-            setStatusMessage('AI 모델 정밀 분석 진행 중 (이슈 심층 진단)...');
+            setStatusMessage(prev => {
+                if (uploadProgress > 70) return '이슈 심층 진단 및 요약 리포트 생성 중...';
+                if (uploadProgress > 50) return '문서 내용 구조화 및 필드 추출 중...';
+                return 'AI 모델 정밀 분석 진행 중...';
+            });
         }, 200);
 
         // Pass existing course names for AI Entity Resolution
@@ -206,14 +217,15 @@ const WriteLog: React.FC = () => {
         );
         
         clearInterval(progressInterval);
-        setUploadProgress(100);
-        setStatusMessage('데이터 추출 및 분류 완료!');
+        setUploadProgress(95); 
+        setStatusMessage('분석 완료, 후속 작업 처리 중...');
         
         if (results && results.length > 0) {
             const isMultiLog = results.length > 1;
             const extractedSummary: {label: string, value: string}[] = [];
             let isNewCourseCreated = false;
             let logCount = 0;
+            let summaryReportText = ''; // Accumulate summaries
 
             // Process each result
             for (const result of results) {
@@ -230,6 +242,13 @@ const WriteLog: React.FC = () => {
                 if (result.key_issues && result.key_issues.length > 0) {
                     extraDetails.push(`\n[AI 식별 핵심 이슈 (${result.courseName})]\n${result.key_issues.map((issue: string) => `- ${issue}`).join('\n')}`);
                 }
+                
+                // Add Summary Report to content if available
+                if (result.summary_report) {
+                    summaryReportText += `[${result.courseName} 요약] ${result.summary_report}\n\n`;
+                    extraDetails.push(`\n[AI 심층 요약]\n${result.summary_report}`);
+                }
+
                 if (extraDetails.length > 0) {
                     enhancedContent += `\n\n[AI 추출 상세 정보]\n${extraDetails.join('\n')}`;
                 }
@@ -245,6 +264,7 @@ const WriteLog: React.FC = () => {
                     courseNameForFeedback = matchedCourse.name;
                 } else if (result.courseName && result.courseName !== '미지정') {
                     isNewCourseCreated = true;
+                    // 1. Create Placeholder Course locally
                     const autoCourseId = `auto-course-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
                     const newAutoCourse: GolfCourse = {
                         id: autoCourseId,
@@ -261,6 +281,23 @@ const WriteLog: React.FC = () => {
                     addCourse(newAutoCourse);
                     targetCourseId = autoCourseId;
                     courseNameForFeedback = result.courseName;
+
+                    // 2. Trigger Async Enrichment (Naver Maps Simulation) - Auto Update
+                    // This fetches Address/GPS for the newly created course
+                    getCourseDetailsFromAI(result.courseName).then((details) => {
+                        console.log(`Auto-enriching ${result.courseName}`, details);
+                        updateCourse({
+                            ...newAutoCourse,
+                            address: details.address || newAutoCourse.address,
+                            holes: details.holes || newAutoCourse.holes,
+                            type: details.type || newAutoCourse.type,
+                            grassType: details.grassType || newAutoCourse.grassType,
+                            // Add Lat/Lng if found
+                            lat: details.lat,
+                            lng: details.lng,
+                            description: details.description ? `${newAutoCourse.description}\n\n[지도 상세 정보]\n${details.description}` : newAutoCourse.description
+                        });
+                    }).catch(err => console.error("Auto-enrichment failed", err));
                 }
 
                 // Add to summary
@@ -316,6 +353,8 @@ const WriteLog: React.FC = () => {
                 extractedSummary.push({ label: '기타', value: `외 ${results.length - 3}건 추가됨` });
             }
 
+            setUploadProgress(100);
+            
             setFeedback({
                 type: 'success', 
                 title: isMultiLog ? `총 ${results.length}건의 일지가 자동 분류 및 등록되었습니다` : 'AI 분석 및 자동 입력 성공',
@@ -324,7 +363,8 @@ const WriteLog: React.FC = () => {
                    : (isAutoSaveEnabled ? `데이터가 '${results[0].courseName}'로 자동 분류되어 공유되었습니다.` : `AI가 데이터를 추출하여 입력 필드를 채웠습니다.`),
                 fields: extractedSummary,
                 isNewCourse: isNewCourseCreated,
-                multiLogCount: results.length
+                multiLogCount: results.length,
+                summaryReport: summaryReportText // Pass the report
             });
             
             setAiTextInput('');
@@ -337,7 +377,34 @@ const WriteLog: React.FC = () => {
         console.error(error);
         if(progressInterval) clearInterval(progressInterval);
         setUploadProgress(0);
-        setFeedback({type: 'error', title: '분석 실패', message: error.message || '오류가 발생했습니다.'});
+        
+        let errorTitle = '분석 실패';
+        let errorMsg = error.message || '알 수 없는 오류가 발생했습니다.';
+        
+        // Map error codes to user-friendly messages
+        if (errorMsg === "UNSUPPORTED_TYPE") {
+            errorTitle = "지원하지 않는 파일";
+            errorMsg = "PDF 또는 이미지 파일만 지원됩니다.";
+        } else if (errorMsg === "SIZE_LIMIT_EXCEEDED") {
+            errorTitle = "파일 크기 초과";
+            errorMsg = "10MB 이하의 파일만 업로드할 수 있습니다.";
+        } else if (errorMsg === "API_KEY_ERROR") {
+            errorTitle = "AI 서비스 권한 오류";
+            errorMsg = "API Key가 설정되지 않았거나 만료되었습니다. 관리자에게 문의하세요.";
+        } else if (errorMsg === "QUOTA_EXCEEDED") {
+            errorTitle = "사용량 초과";
+            errorMsg = "AI 서비스 요청량이 너무 많습니다. 잠시 후 다시 시도해주세요.";
+        } else if (errorMsg === "SAFETY_BLOCK") {
+            errorTitle = "보안 정책 차단";
+            errorMsg = "문서 내용이 안전 정책에 의해 차단되었습니다. 민감한 정보가 포함되었는지 확인하세요.";
+        }
+
+        setFeedback({
+            type: 'error', 
+            title: errorTitle, 
+            message: errorMsg,
+            retryAction: () => performAiAnalysis(file, text)
+        });
     } finally {
         if(progressInterval) clearInterval(progressInterval);
         setIsAnalyzing(false);
@@ -392,10 +459,25 @@ const WriteLog: React.FC = () => {
       issues: [] // Init empty issues
     };
     addCourse(courseToAdd);
+    
+    // Auto-update GPS/Details for manually added course
+    getCourseDetailsFromAI(newCourse.name).then((details) => {
+        updateCourse({
+            ...courseToAdd,
+            address: details.address || courseToAdd.address,
+            holes: details.holes || courseToAdd.holes,
+            type: details.type || courseToAdd.type,
+            grassType: details.grassType || courseToAdd.grassType,
+            lat: details.lat,
+            lng: details.lng,
+            description: details.description ? `${courseToAdd.description}\n\n[지도 상세 정보]\n${details.description}` : courseToAdd.description
+        });
+    }).catch(err => console.error("Manual course auto-enrichment failed", err));
+
     if (activeTab === 'LOG') setCourseId(courseToAdd.id);
     else setPersonCourseId(courseToAdd.id);
     setIsCourseModalOpen(false);
-    alert(`${courseToAdd.name} 골프장이 등록되었습니다.`);
+    alert(`${courseToAdd.name} 골프장이 등록되었습니다. (세부 정보 자동 업데이트 중)`);
   };
 
   const handleLogSubmit = (e: React.FormEvent) => {
@@ -528,11 +610,33 @@ const WriteLog: React.FC = () => {
                             )}
                         </div>
                         <p className="text-sm opacity-90 mt-1 whitespace-pre-line">{feedback.message}</p>
+                        
+                        {/* Retry Button for Errors */}
+                        {feedback.type === 'error' && feedback.retryAction && (
+                            <button 
+                                onClick={feedback.retryAction}
+                                className="mt-3 bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-md text-xs font-bold flex items-center transition-colors"
+                            >
+                                <RefreshCcw size={12} className="mr-1.5"/> 다시 시도
+                            </button>
+                        )}
+
                         {feedback.fields && (
                             <div className="mt-3 bg-black/20 p-2 rounded text-xs grid grid-cols-2 gap-2">
                                 {feedback.fields.map((f, i) => (
                                     <div key={i}><span className="opacity-70 mr-1">{f.label}:</span> <strong>{f.value}</strong></div>
                                 ))}
+                            </div>
+                        )}
+                        {/* New: Summary Report Display */}
+                        {feedback.summaryReport && (
+                            <div className="mt-4 bg-brand-900/50 p-3 rounded-lg border border-brand-500/30">
+                                <h5 className="text-xs font-bold text-yellow-400 mb-2 flex items-center">
+                                    <Sparkles size={12} className="mr-1"/> AI 심층 분석 및 제언
+                                </h5>
+                                <p className="text-xs text-slate-100 whitespace-pre-line leading-relaxed">
+                                    {feedback.summaryReport}
+                                </p>
                             </div>
                         )}
                     </div>
