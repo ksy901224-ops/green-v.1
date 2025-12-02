@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useParams } from 'react-router-dom';
-import { User, Phone, Briefcase, MapPin, HeartHandshake, ChevronDown, Edit2, X, CheckCircle, Trash2, Plus, Calendar, Archive, ArrowRight, Sparkles, AlertCircle } from 'lucide-react';
+import { User, Phone, Briefcase, MapPin, HeartHandshake, ChevronDown, Edit2, X, CheckCircle, Trash2, Plus, ArrowRight, Archive, Sparkles } from 'lucide-react';
 import { AffinityLevel, Person, CareerRecord } from '../types';
 import { useApp } from '../contexts/AppContext';
 
@@ -65,7 +65,7 @@ const PersonDetail: React.FC = () => {
 
   const openEditModal = () => {
       setEditForm({ ...person });
-      setOriginalPerson({ ...person });
+      setOriginalPerson({ ...person }); // Store snapshot
       setShouldArchive(false);
       setIsEditModalOpen(true);
   };
@@ -120,13 +120,13 @@ const PersonDetail: React.FC = () => {
           // Generate a detailed description for the archived record
           const changes = [];
           if (originalPerson.currentCourseId !== editForm.currentCourseId) {
-            changes.push(`소속(${oldCourseName}→${newCourseName})`);
+            changes.push(`소속 변경(${oldCourseName} → ${newCourseName})`);
           }
           if (originalPerson.currentRole !== editForm.currentRole) {
-            changes.push(`직책(${originalPerson.currentRole}→${editForm.currentRole})`);
+            changes.push(`직책 변경(${originalPerson.currentRole} → ${editForm.currentRole})`);
           }
 
-          const changeReason = `[시스템 자동 보관] 변경사항: ${changes.join(', ')}`;
+          const changeReason = `[시스템 자동 보관] ${changes.join(', ')}`;
           
           const archivedRecord: CareerRecord = {
               courseId: originalPerson.currentCourseId,

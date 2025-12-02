@@ -124,10 +124,49 @@ const WriteLog: React.FC = () => {
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-        setFileName(e.target.files[0].name);
-    }
+  // Helper: Parse "Name Role" string (e.g., "Kim Chulsoo Manager")
+  const processAndRegisterPerson = (rawString: string, linkedCourseId: string) => {
+      if (!rawString || rawString.trim().length < 2) return;
+
+      const cleanStr = rawString.trim();
+      
+      // Heuristic: Split by space. 
+      // Known roles in Korean golf industry
+      const knownRoles = ['팀장', '지배인', '총지배인', '대표', '이사', '전무', '상무', '회장', '사장', '소장', '반장', '프로', '캐디', '마스터', '슈퍼', '과장', '대리', '주임', '사원', '부장', '본부장'];
+      
+      const parts = cleanStr.split(/\s+/);
+      let name = cleanStr;
+      let role = '담당자'; // Default role
+
+      if (parts.length > 1) {
+          const lastPart = parts[parts.length - 1];
+          // Check if last part is a role
+          if (knownRoles.some(r => lastPart.includes(r))) {
+              role = lastPart;
+              name = parts.slice(0, parts.length - 1).join(' ');
+          } else {
+              // Assume last part might be name if first part is company? No, assume full string is name if no clear role
+              // Or split: Name Role (e.g. 홍길동 팀장) is standard.
+              role = parts[parts.length - 1];
+              name = parts.slice(0, parts.length - 1).join(' ');
+          }
+      }
+
+      // Construct Person Object
+      const newPerson: Person = {
+          id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+          name: name,
+          phone: '', // Unknown from log title usually
+          currentRole: role,
+          currentCourseId: linkedCourseId,
+          currentRoleStartDate: new Date().toISOString().split('T')[0],
+          affinity: AffinityLevel.NEUTRAL, // Default neutral
+          notes: `[AI 자동등록] 업무 일지 분석을 통해 등록됨 (${new Date().toISOString().split('T')[0]})`,
+          careers: []
+      };
+
+      console.log(`[AI Auto-Register] Processing person: ${name} (${role}) at ${linkedCourseId}`);
+      addPerson(newPerson); // AppContext handles deduplication/merging
   };
 
   const performAiAnalysis = async (file?: File, text?: string) => {
@@ -309,6 +348,11 @@ const WriteLog: React.FC = () => {
                 // --- SAVE LOGIC ---
                 // If Auto Save is ON OR if multiple logs detected (force save to avoid UI conflict)
                 if (isAutoSaveEnabled || isMultiLog) {
+                    // AUTO REGISTER PERSON IF DETECTED
+                    if (result.contact_person && targetCourseId) {
+                        processAndRegisterPerson(result.contact_person, targetCourseId);
+                    }
+
                     const newLog: LogEntry = {
                         id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         date: result.date || new Date().toISOString().split('T')[0],
@@ -359,8 +403,8 @@ const WriteLog: React.FC = () => {
                 type: 'success', 
                 title: isMultiLog ? `총 ${results.length}건의 일지가 자동 분류 및 등록되었습니다` : 'AI 분석 및 자동 입력 성공',
                 message: isMultiLog
-                   ? `문서에서 ${results.length}개의 서로 다른 골프장 정보가 감지되어 각각 별도의 일지로 분리/저장되었습니다.` 
-                   : (isAutoSaveEnabled ? `데이터가 '${results[0].courseName}'로 자동 분류되어 공유되었습니다.` : `AI가 데이터를 추출하여 입력 필드를 채웠습니다.`),
+                   ? `문서에서 ${results.length}개의 서로 다른 골프장 정보가 감지되어 각각 별도의 일지로 분리/저장되었습니다.\n(관련 담당자도 자동 등록되었습니다)` 
+                   : (isAutoSaveEnabled ? `데이터가 '${results[0].courseName}'로 자동 분류되어 공유되었습니다.\n(관련 담당자도 자동 등록되었습니다)` : `AI가 데이터를 추출하여 입력 필드를 채웠습니다.`),
                 fields: extractedSummary,
                 isNewCourse: isNewCourseCreated,
                 multiLogCount: results.length,
@@ -486,6 +530,11 @@ const WriteLog: React.FC = () => {
 
     const selectedCourse = globalCourses.find(c => c.id === courseId);
 
+    // AUTO REGISTER PERSON if contactPerson is filled
+    if (contactPerson && courseId) {
+        processAndRegisterPerson(contactPerson, courseId);
+    }
+
     if (editingLog) {
        const updatedLog: LogEntry = {
            ...editingLog,
@@ -560,8 +609,8 @@ const WriteLog: React.FC = () => {
   const getInputClass = (key: string) => `w-full rounded-lg border shadow-sm py-2 px-3 transition-all ${isFilled(key) ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-200' : 'border-slate-300 focus:ring-brand-500'}`;
   const getSelectClass = (key: string) => `w-full rounded-lg border shadow-sm py-2.5 px-3 transition-all ${isFilled(key) ? 'bg-yellow-100 border-yellow-400 ring-2 ring-yellow-200' : 'border-slate-300 focus:ring-brand-500'}`;
 
-  // Check if contact person is new
-  const isNewPerson = contactPerson && contactPerson.length > 1 && !globalPeople.some(p => p.name.replace(/\s/g,'') === contactPerson.replace(/\s/g,''));
+  // Check if contact person is new (Smart deduplication check visual)
+  const isNewPerson = contactPerson && contactPerson.length > 1 && !globalPeople.some(p => p.name.replace(/\s/g,'').includes(contactPerson.split(' ')[0].replace(/\s/g,'')));
 
   return (
     <div className="space-y-6 relative">
@@ -663,7 +712,7 @@ const WriteLog: React.FC = () => {
                     <div className={`w-10 h-5 rounded-full relative mr-2 transition-colors ${isAutoSaveEnabled ? 'bg-yellow-400' : 'bg-slate-600'}`}>
                         <div className={`w-3 h-3 bg-white rounded-full absolute top-1 transition-all ${isAutoSaveEnabled ? 'left-6' : 'left-1'}`}></div>
                     </div>
-                    <span className="text-xs font-bold text-white">자동 저장 및 공유</span>
+                    <span className="text-xs font-bold text-white">자동 저장 및 공유 (관련 인물 자동등록 포함)</span>
                 </div>
             </div>
           )}
@@ -703,9 +752,9 @@ const WriteLog: React.FC = () => {
               <div>
                   <label className="block text-sm font-medium text-slate-700 mb-2 flex justify-between">
                       <span>관련 담당자 (자동 인물 등록)</span>
-                      {isNewPerson && (
-                          <span className="text-xs font-bold text-brand-600 bg-brand-50 px-2 py-0.5 rounded flex items-center">
-                              <UserPlus size={10} className="mr-1"/> DB 미등록: 저장 시 신규 등록됨
+                      {contactPerson && (
+                          <span className={`text-xs font-bold px-2 py-0.5 rounded flex items-center ${isNewPerson ? 'text-brand-600 bg-brand-50' : 'text-slate-600 bg-slate-100'}`}>
+                              <UserPlus size={10} className="mr-1"/> {isNewPerson ? '신규 등록 예정' : '기존 인물 업데이트'}
                           </span>
                       )}
                   </label>
@@ -716,7 +765,7 @@ const WriteLog: React.FC = () => {
                     value={contactPerson} 
                     onChange={(e) => setContactPerson(e.target.value)} 
                   />
-                  <p className="text-xs text-slate-400 mt-1">입력된 인물이 DB에 없으면 해당 골프장 담당자로 자동 등록됩니다.</p>
+                  <p className="text-xs text-slate-400 mt-1">입력된 인물은 AI 분석을 통해 자동으로 직책이 분리되어 등록됩니다.</p>
               </div>
 
               <div className="pt-4">
@@ -729,8 +778,6 @@ const WriteLog: React.FC = () => {
         </div>
       )}
 
-      {/* Person & Schedule Tabs omitted for brevity (same as previous) */}
-      {/* Course Modal omitted for brevity */}
       {/* ... keeping existing Person/Schedule/Modal code ... */}
       {activeTab === 'PERSON' && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 animate-in fade-in duration-300">
