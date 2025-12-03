@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { Menu, X, MapPin, Users, Home, PlusSquare, Settings, LogOut, Shield, User, ListChecks, LayoutDashboard } from 'lucide-react';
+import { Menu, X, MapPin, Users, Home, PlusSquare, Settings, LogOut, Shield, User, ListChecks, LayoutDashboard, Share2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { UserRole } from '../types';
 
@@ -17,7 +17,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   const navItems = [
     { label: '홈/대시보드', path: '/', icon: <Home size={20} /> },
     { label: '골프장 찾기', path: '/courses', icon: <MapPin size={20} /> },
-    // Removed '인물 검색' (Person Search) as requested
+    { label: '관계도', path: '/relationship-map', icon: <Share2 size={20} /> },
     { label: '정보 등록', path: '/write', icon: <PlusSquare size={20} /> },
     { label: '설정', path: '/settings', icon: <Settings size={20} /> },
   ];

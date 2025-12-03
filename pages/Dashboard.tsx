@@ -4,8 +4,8 @@ import { MOCK_EXTERNAL_EVENTS } from '../constants';
 import LogCard from '../components/LogCard';
 import { CalendarView } from '../components/CalendarView';
 import { CalendarSettingsModal } from '../components/CalendarSettingsModal';
-import { Department, LogEntry } from '../types';
-import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2, Search, Sparkles } from 'lucide-react';
+import { Department, LogEntry, UserRole } from '../types';
+import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2, Search, Sparkles, MessageCircleQuestion } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { addTodo } from '../services/firestoreService';
 import { searchAppWithAI } from '../services/geminiService';
@@ -36,15 +36,19 @@ const Dashboard: React.FC = () => {
   const [aiSearchResult, setAiSearchResult] = useState<string | null>(null);
   const [isAiSearching, setIsAiSearching] = useState(false);
 
-  const handleAiSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!aiSearchQuery.trim()) return;
+  const handleAiSearch = async (e?: React.FormEvent, queryOverride?: string) => {
+    if (e) e.preventDefault();
+    const query = queryOverride || aiSearchQuery;
+    if (!query.trim()) return;
+
+    // Update input if triggered via suggestion click
+    if (queryOverride) setAiSearchQuery(queryOverride);
 
     setIsAiSearching(true);
     setAiSearchResult(null);
 
     try {
-      const result = await searchAppWithAI(aiSearchQuery, { logs, courses, people });
+      const result = await searchAppWithAI(query, { logs, courses, people });
       setAiSearchResult(result);
     } catch (error) {
       setAiSearchResult("검색 중 오류가 발생했습니다.");
@@ -136,6 +140,17 @@ const Dashboard: React.FC = () => {
     return acc;
   }, {} as Record<string, LogEntry[]>);
 
+  // --- Suggested Queries ---
+  const suggestedQueries = [
+    '최근 1주일간 스카이뷰 CC 주요 이슈는?',
+    '김철수 팀장 관련 기록 요약해줘',
+    '진행 중인 모든 공사 현황 알려줘',
+    '레이크사이드 관련 최신 영업 기록은?'
+  ];
+
+  // Role based access for Widgets
+  const canUseAI = user?.role === UserRole.ADMIN || user?.role === 'SENIOR'; // Assuming 'SENIOR' matches enum value if defined, else strict check
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col space-y-4">
@@ -214,72 +229,91 @@ const Dashboard: React.FC = () => {
           </div>
         </div>
 
-        {/* --- AI SMART SEARCH WIDGET --- */}
-        <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-5 rounded-xl shadow-lg text-white">
-          <div className="flex items-center mb-3">
-             <Sparkles className="text-yellow-300 mr-2" size={20} />
-             <h3 className="font-bold text-lg">AI 통합 데이터 검색</h3>
-          </div>
-          <p className="text-indigo-100 text-sm mb-4">
-             "김철수 팀장의 최근 이슈가 뭐야?", "스카이뷰 CC 공사 현황 알려줘" 처럼 물어보세요.
-             <span className="opacity-70 text-xs ml-2">(DB에 저장된 일지와 정보를 기반으로 답변합니다)</span>
-          </p>
-          
-          <form onSubmit={handleAiSearch} className="relative">
-            <input 
-               type="text" 
-               value={aiSearchQuery}
-               onChange={(e) => setAiSearchQuery(e.target.value)}
-               placeholder="무엇이든 물어보세요..."
-               className="w-full pl-10 pr-24 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 focus:ring-2 focus:ring-yellow-400 backdrop-blur-sm transition-all"
-            />
-            <Search className="absolute left-3 top-3.5 text-indigo-200" size={20} />
-            <button 
-               type="submit" 
-               disabled={isAiSearching || !aiSearchQuery.trim()}
-               className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-white text-indigo-700 rounded-md font-bold text-sm hover:bg-indigo-50 transition-colors disabled:opacity-70 flex items-center"
-            >
-               {isAiSearching ? <Loader2 size={16} className="animate-spin" /> : '검색'}
-            </button>
-          </form>
+        {/* --- AI SMART SEARCH WIDGET (Restricted Access) --- */}
+        {canUseAI && (
+          <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-5 rounded-xl shadow-lg text-white">
+            <div className="flex items-center mb-3">
+              <Sparkles className="text-yellow-300 mr-2" size={20} />
+              <h3 className="font-bold text-lg">AI 통합 데이터 검색</h3>
+            </div>
+            <p className="text-indigo-100 text-sm mb-4">
+              내부 DB(일지, 인물, 골프장)를 바탕으로 질문에 답변합니다.
+            </p>
+            
+            <form onSubmit={(e) => handleAiSearch(e)} className="relative">
+              <input 
+                type="text" 
+                value={aiSearchQuery}
+                onChange={(e) => setAiSearchQuery(e.target.value)}
+                placeholder="예: 최근 1주일간 스카이뷰 CC 주요 이슈는?"
+                className="w-full pl-10 pr-24 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-indigo-200 focus:outline-none focus:bg-white/20 focus:ring-2 focus:ring-yellow-400 backdrop-blur-sm transition-all shadow-inner"
+              />
+              <Search className="absolute left-3 top-3.5 text-indigo-200" size={20} />
+              <button 
+                type="submit" 
+                disabled={isAiSearching || !aiSearchQuery.trim()}
+                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-white text-indigo-700 rounded-md font-bold text-sm hover:bg-indigo-50 transition-colors disabled:opacity-70 flex items-center shadow-sm"
+              >
+                {isAiSearching ? <Loader2 size={16} className="animate-spin" /> : '검색'}
+              </button>
+            </form>
 
-          {aiSearchResult && (
-             <div className="mt-4 bg-black/20 rounded-lg p-4 text-sm leading-relaxed border border-white/10 animate-in fade-in slide-in-from-top-2 whitespace-pre-wrap">
-                {aiSearchResult}
-             </div>
-          )}
-        </div>
+            {/* Suggested Queries Chips */}
+            <div className="mt-3 flex flex-wrap gap-2 items-center animate-in fade-in slide-in-from-top-1 duration-500">
+               <span className="text-xs font-bold text-indigo-200 flex items-center mr-1">
+                   <MessageCircleQuestion size={12} className="mr-1"/> 추천 질문:
+               </span>
+               {suggestedQueries.map((q, idx) => (
+                   <button
+                       key={idx}
+                       onClick={() => handleAiSearch(undefined, q)}
+                       className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white hover:bg-white/20 hover:border-white/30 transition-all cursor-pointer select-none"
+                   >
+                       {q}
+                   </button>
+               ))}
+            </div>
+
+            {aiSearchResult && (
+              <div className="mt-4 bg-black/20 rounded-lg p-4 text-sm leading-relaxed border border-white/10 animate-in fade-in slide-in-from-top-2 whitespace-pre-wrap shadow-inner">
+                  {aiSearchResult}
+              </div>
+            )}
+          </div>
+        )}
         {/* --------------------------- */}
 
-        {/* --- To-Do Input Widget (Firebase) --- */}
-        <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-white to-brand-50/30">
-          <div className="flex items-center space-x-3 shrink-0">
-            <div className="p-2 bg-brand-100 text-brand-600 rounded-lg">
-              <CheckCircle size={20} />
+        {/* --- To-Do Input Widget (Restricted Access) --- */}
+        {canUseAI && (
+          <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-white to-brand-50/30">
+            <div className="flex items-center space-x-3 shrink-0">
+              <div className="p-2 bg-brand-100 text-brand-600 rounded-lg">
+                <CheckCircle size={20} />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-800 text-sm">오늘의 할 일</h3>
+                <p className="text-xs text-slate-500">완료 후 DB에 저장됩니다.</p>
+              </div>
             </div>
-            <div>
-              <h3 className="font-bold text-slate-800 text-sm">오늘의 할 일</h3>
-              <p className="text-xs text-slate-500">완료 후 DB에 저장됩니다.</p>
-            </div>
+            <form onSubmit={handleAddTodo} className="flex-1 w-full flex gap-2">
+              <input 
+                type="text" 
+                value={todoText}
+                onChange={(e) => setTodoText(e.target.value)}
+                placeholder="할 일을 입력하세요..."
+                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-shadow"
+              />
+              <button 
+                type="submit" 
+                disabled={isTodoSubmitting || !todoText.trim()}
+                className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 flex items-center transition-colors"
+              >
+                {isTodoSubmitting ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} className="mr-1" />}
+                추가
+              </button>
+            </form>
           </div>
-          <form onSubmit={handleAddTodo} className="flex-1 w-full flex gap-2">
-            <input 
-              type="text" 
-              value={todoText}
-              onChange={(e) => setTodoText(e.target.value)}
-              placeholder="할 일을 입력하세요..."
-              className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-shadow"
-            />
-            <button 
-              type="submit" 
-              disabled={isTodoSubmitting || !todoText.trim()}
-              className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 flex items-center transition-colors"
-            >
-              {isTodoSubmitting ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} className="mr-1" />}
-              추가
-            </button>
-          </form>
-        </div>
+        )}
         {/* ------------------------------------ */}
 
         {/* Filters Bar */}

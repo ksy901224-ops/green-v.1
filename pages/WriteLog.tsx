@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Department, GolfCourse, CourseType, GrassType, LogEntry, Person, AffinityLevel, ExternalEvent } from '../types';
-import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, Users, CheckCircle, AlertCircle, PlusSquare, Zap, AlertTriangle, Clock, Globe, Map, ArrowLeft, Calendar, FileType, AlignLeft, CalendarPlus, ListChecks, RefreshCcw } from 'lucide-react';
+import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, Users, CheckCircle, AlertCircle, PlusSquare, Zap, AlertTriangle, Clock, Globe, Map, ArrowLeft, Calendar, FileType, AlignLeft, CalendarPlus, ListChecks, RefreshCcw, Layers } from 'lucide-react';
 import { analyzeDocument, getCourseDetailsFromAI } from '../services/geminiService';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate, useLocation } from 'react-router-dom';
@@ -48,6 +48,7 @@ const WriteLog: React.FC = () => {
   // --- AI Input Mode State ---
   const [aiInputMode, setAiInputMode] = useState<'FILE' | 'TEXT'>('FILE');
   const [aiTextInput, setAiTextInput] = useState('');
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]); // New: Handle multiple files
 
   // --- Analysis Feedback State ---
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -124,31 +125,53 @@ const WriteLog: React.FC = () => {
     }
   };
 
-  // Helper: Parse "Name Role" string (e.g., "Kim Chulsoo Manager")
+  // Helper: Smart Parse "Name Role" string (e.g., "Kim Chulsoo Manager")
   const processAndRegisterPerson = (rawString: string, linkedCourseId: string) => {
       if (!rawString || rawString.trim().length < 2) return;
 
       const cleanStr = rawString.trim();
       
-      // Heuristic: Split by space. 
-      // Known roles in Korean golf industry
-      const knownRoles = ['팀장', '지배인', '총지배인', '대표', '이사', '전무', '상무', '회장', '사장', '소장', '반장', '프로', '캐디', '마스터', '슈퍼', '과장', '대리', '주임', '사원', '부장', '본부장'];
+      // Known roles in Korean golf industry (Expanded List)
+      const knownRoles = [
+        '팀장', '지배인', '총지배인', '대표', '이사', '전무', '상무', '회장', '사장', 
+        '소장', '반장', '프로', '캐디', '마스터', '슈퍼', '과장', '대리', '주임', '사원', 
+        '부장', '본부장', '그린키퍼', '헤드그린키퍼', '캡틴', '매니저'
+      ];
       
       const parts = cleanStr.split(/\s+/);
       let name = cleanStr;
       let role = '담당자'; // Default role
 
+      // Strategy 1: "Name Role" or "Role Name"
       if (parts.length > 1) {
           const lastPart = parts[parts.length - 1];
-          // Check if last part is a role
+          const firstPart = parts[0];
+
+          // Check if last part is a role (e.g., "홍길동 팀장")
           if (knownRoles.some(r => lastPart.includes(r))) {
               role = lastPart;
               name = parts.slice(0, parts.length - 1).join(' ');
-          } else {
-              // Assume last part might be name if first part is company? No, assume full string is name if no clear role
-              // Or split: Name Role (e.g. 홍길동 팀장) is standard.
+          } 
+          // Check if first part is a role (e.g., "팀장 홍길동")
+          else if (knownRoles.some(r => firstPart.includes(r))) {
+              role = firstPart;
+              name = parts.slice(1).join(' ');
+          }
+          else {
+              // Ambiguous, use heuristic: Shortest part is likely name if 3 chars or less? 
+              // Default to standard "Name Role" assumption
               role = parts[parts.length - 1];
               name = parts.slice(0, parts.length - 1).join(' ');
+          }
+      } 
+      // Strategy 2: Single string containing role (e.g. "홍길동팀장")
+      else {
+          for (const r of knownRoles) {
+              if (cleanStr.endsWith(r) && cleanStr.length > r.length) {
+                  role = r;
+                  name = cleanStr.substring(0, cleanStr.length - r.length);
+                  break;
+              }
           }
       }
 
@@ -156,7 +179,7 @@ const WriteLog: React.FC = () => {
       const newPerson: Person = {
           id: `auto-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
           name: name,
-          phone: '', // Unknown from log title usually
+          phone: '', // Phone is unknown from log text usually
           currentRole: role,
           currentCourseId: linkedCourseId,
           currentRoleStartDate: new Date().toISOString().split('T')[0],
@@ -166,15 +189,16 @@ const WriteLog: React.FC = () => {
       };
 
       console.log(`[AI Auto-Register] Processing person: ${name} (${role}) at ${linkedCourseId}`);
-      addPerson(newPerson); // AppContext handles deduplication/merging
+      // AppContext's addPerson handles deduplication and smart merging (merges role/course if name matches)
+      addPerson(newPerson); 
   };
 
-  const performAiAnalysis = async (file?: File, text?: string) => {
-    if (!file && !text) return;
+  const performAiAnalysis = async (files?: File[], text?: string) => {
+    if ((!files || files.length === 0) && !text) return;
 
     setFeedback(null);
     setUploadProgress(0);
-    setStatusMessage('데이터 준비 및 검증 중...');
+    setStatusMessage('대용량 데이터 준비 및 검증 중...');
     setHighlightedFields(new Set());
     setIsAnalyzing(true);
     setContactPerson(''); // Reset contact person on new analysis
@@ -182,52 +206,46 @@ const WriteLog: React.FC = () => {
     let progressInterval: any;
 
     try {
-        let base64Data: string | undefined;
-        let mimeType: string | undefined;
+        const payload: { base64Data?: string, mimeType?: string, textData?: string }[] = [];
 
-        // --- File Processing ---
-        if (file) {
-            // Validation Logic ... (omitted for brevity, same as before)
+        // --- Multi-File Processing ---
+        if (files && files.length > 0) {
             const validTypes = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
             const validExtensions = ['.pdf', '.jpg', '.jpeg', '.png', '.webp', '.heic', '.heif'];
-            const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+            
+            // Parallel Read
+            const readPromises = files.map(file => {
+                const fileExtension = file.name.toLowerCase().substring(file.name.lastIndexOf('.'));
+                const isMimeValid = file.type ? validTypes.includes(file.type) : true;
+                const isExtValid = validExtensions.includes(fileExtension);
 
-            const isMimeValid = file.type ? validTypes.includes(file.type) : true;
-            const isExtValid = validExtensions.includes(fileExtension);
+                if (!isMimeValid && !isExtValid) {
+                     throw new Error(`지원하지 않는 파일 형식: ${file.name}`);
+                }
 
-            if (!isMimeValid && !isExtValid) {
-                setFeedback({
-                    type: 'error', 
-                    title: '지원하지 않는 파일 형식', 
-                    message: 'PDF 문서 또는 이미지 파일(JPG, PNG)만 분석 가능합니다.'
+                return new Promise<{base64: string, type: string}>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                        const result = reader.result as string;
+                        if(result) resolve({base64: result.split(',')[1], type: file.type || 'application/octet-stream'});
+                        else reject(new Error(`File read failed: ${file.name}`));
+                    };
+                    reader.onerror = () => reject(new Error(`File read error: ${file.name}`));
+                    reader.readAsDataURL(file);
                 });
-                setIsAnalyzing(false); return;
-            }
-
-            // Read File
-            const readPromise = new Promise<{base64: string, type: string}>((resolve, reject) => {
-                const reader = new FileReader();
-                reader.onprogress = (event) => {
-                    if (event.lengthComputable) {
-                        setUploadProgress(Math.round((event.loaded / event.total) * 30));
-                        setStatusMessage('파일 서버 전송 중...');
-                    }
-                };
-                reader.onloadend = () => {
-                    const result = reader.result as string;
-                    if(result) resolve({base64: result.split(',')[1], type: file.type || 'application/octet-stream'});
-                    else reject(new Error("File read failed"));
-                };
-                reader.onerror = () => reject(new Error("File read error"));
-                reader.readAsDataURL(file);
             });
 
-            const fileResult = await readPromise;
-            base64Data = fileResult.base64;
-            mimeType = fileResult.type;
+            setStatusMessage(`파일 ${files.length}개 로딩 중...`);
+            const fileResults = await Promise.all(readPromises);
+            
+            fileResults.forEach(res => {
+                payload.push({ base64Data: res.base64, mimeType: res.type });
+            });
+
             setUploadProgress(35);
-            setStatusMessage('AI 분석 엔진 가동 중...');
-        } else {
+            setStatusMessage(`AI 분석 엔진에 ${files.length}개 문서 전송 중...`);
+        } else if (text) {
+            payload.push({ textData: text });
             setUploadProgress(30);
             setStatusMessage('텍스트 데이터 분석 시작...');
         }
@@ -240,18 +258,18 @@ const WriteLog: React.FC = () => {
                 return prev + (prev < 60 ? 3 : 1); 
             });
             setStatusMessage(prev => {
-                if (uploadProgress > 70) return '이슈 심층 진단 및 요약 리포트 생성 중...';
+                if (uploadProgress > 70) return '다중 문서 통합 분석 및 요약 중...';
                 if (uploadProgress > 50) return '문서 내용 구조화 및 필드 추출 중...';
                 return 'AI 모델 정밀 분석 진행 중...';
             });
-        }, 200);
+        }, 300);
 
         // Pass existing course names for AI Entity Resolution
         const existingCourseNames = globalCourses.map(c => c.name);
         
-        // RESULT IS NOW AN ARRAY
+        // RESULT IS AN ARRAY
         const results = await analyzeDocument(
-            { base64Data, mimeType, textData: text },
+            payload,
             existingCourseNames
         );
         
@@ -265,6 +283,7 @@ const WriteLog: React.FC = () => {
             let isNewCourseCreated = false;
             let logCount = 0;
             let summaryReportText = ''; // Accumulate summaries
+            let registeredPersonCount = 0;
 
             // Process each result
             for (const result of results) {
@@ -345,14 +364,17 @@ const WriteLog: React.FC = () => {
                     extractedSummary.push({ label: `[${logCount}] 이슈`, value: `${result.key_issues?.length || 0}건 식별` });
                 }
 
+                // --- SMART PERSON REGISTRATION (Auto) ---
+                // If a contact person is detected, extract name/role and register automatically
+                // This utilizes the deduplication logic in AppContext to prevent duplicates
+                if (result.contact_person && targetCourseId) {
+                    processAndRegisterPerson(result.contact_person, targetCourseId);
+                    registeredPersonCount++;
+                }
+
                 // --- SAVE LOGIC ---
                 // If Auto Save is ON OR if multiple logs detected (force save to avoid UI conflict)
                 if (isAutoSaveEnabled || isMultiLog) {
-                    // AUTO REGISTER PERSON IF DETECTED
-                    if (result.contact_person && targetCourseId) {
-                        processAndRegisterPerson(result.contact_person, targetCourseId);
-                    }
-
                     const newLog: LogEntry = {
                         id: `ai-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
                         date: result.date || new Date().toISOString().split('T')[0],
@@ -399,12 +421,16 @@ const WriteLog: React.FC = () => {
 
             setUploadProgress(100);
             
+            const personMsg = registeredPersonCount > 0 
+                ? `\n(담당자 ${registeredPersonCount}명이 인물 DB에 자동 등록/업데이트되었습니다)` 
+                : '';
+
             setFeedback({
                 type: 'success', 
                 title: isMultiLog ? `총 ${results.length}건의 일지가 자동 분류 및 등록되었습니다` : 'AI 분석 및 자동 입력 성공',
                 message: isMultiLog
-                   ? `문서에서 ${results.length}개의 서로 다른 골프장 정보가 감지되어 각각 별도의 일지로 분리/저장되었습니다.\n(관련 담당자도 자동 등록되었습니다)` 
-                   : (isAutoSaveEnabled ? `데이터가 '${results[0].courseName}'로 자동 분류되어 공유되었습니다.\n(관련 담당자도 자동 등록되었습니다)` : `AI가 데이터를 추출하여 입력 필드를 채웠습니다.`),
+                   ? `문서에서 ${results.length}개의 서로 다른 정보가 감지되어 각각 별도의 일지로 분리/저장되었습니다.${personMsg}` 
+                   : (isAutoSaveEnabled ? `데이터가 '${results[0].courseName}'로 자동 분류되어 공유되었습니다.${personMsg}` : `AI가 데이터를 추출하여 입력 필드를 채웠습니다. ${personMsg ? '\n(담당자 정보는 저장 시 DB에 반영됩니다)' : ''}`),
                 fields: extractedSummary,
                 isNewCourse: isNewCourseCreated,
                 multiLogCount: results.length,
@@ -412,6 +438,7 @@ const WriteLog: React.FC = () => {
             });
             
             setAiTextInput('');
+            setSelectedFiles([]);
             setTimeout(() => setHighlightedFields(new Set()), 15000);
         } else {
             throw new Error('분석 결과가 비어있습니다.');
@@ -447,7 +474,7 @@ const WriteLog: React.FC = () => {
             type: 'error', 
             title: errorTitle, 
             message: errorMsg,
-            retryAction: () => performAiAnalysis(file, text)
+            retryAction: () => performAiAnalysis(files, text)
         });
     } finally {
         if(progressInterval) clearInterval(progressInterval);
@@ -456,10 +483,12 @@ const WriteLog: React.FC = () => {
   };
 
   const handleAutoFillUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-        performAiAnalysis(file);
-        e.target.value = '';
+    const files = e.target.files;
+    if (files && files.length > 0) {
+        const fileList = Array.from(files) as File[];
+        setSelectedFiles(fileList);
+        performAiAnalysis(fileList);
+        e.target.value = ''; // Reset
     }
   };
 
@@ -530,7 +559,7 @@ const WriteLog: React.FC = () => {
 
     const selectedCourse = globalCourses.find(c => c.id === courseId);
 
-    // AUTO REGISTER PERSON if contactPerson is filled
+    // AUTO REGISTER PERSON if contactPerson is filled (Manual Save Trigger)
     if (contactPerson && courseId) {
         processAndRegisterPerson(contactPerson, courseId);
     }
@@ -643,8 +672,8 @@ const WriteLog: React.FC = () => {
           {!editingLog && (
             <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                 {/* AI Input Section (File/Text) - Same UI as before */}
-                <h2 className="text-xl font-bold mb-2 flex items-center"><Sparkles className="mr-2 text-yellow-300" size={20} /> AI 스마트 입력</h2>
-                <p className="text-brand-100 text-sm mb-4">파일 업로드(PDF, 이미지) 또는 텍스트 붙여넣기로 자동 분석</p>
+                <h2 className="text-xl font-bold mb-2 flex items-center"><Sparkles className="mr-2 text-yellow-300" size={20} /> AI 대용량 스마트 분석</h2>
+                <p className="text-brand-100 text-sm mb-4">대량의 파일(PDF, 이미지) 업로드 시 일괄 분석 및 자동 등록됩니다.</p>
                 
                 {isAnalyzing && <div className="text-white font-bold mb-2 flex items-center"><Loader2 className="animate-spin mr-2"/> {statusMessage} ({uploadProgress}%)</div>}
                 
@@ -654,7 +683,7 @@ const WriteLog: React.FC = () => {
                             <span className="flex items-center">{feedback.type === 'success' ? <CheckCircle className="mr-2"/> : <AlertTriangle className="mr-2"/>} {feedback.title}</span>
                             {feedback.multiLogCount && feedback.multiLogCount > 1 && (
                                 <span className="text-xs bg-yellow-400 text-black px-2 py-0.5 rounded-full flex items-center font-bold">
-                                    <ListChecks size={12} className="mr-1"/> 일괄 처리됨
+                                    <ListChecks size={12} className="mr-1"/> {feedback.multiLogCount}건 처리됨
                                 </span>
                             )}
                         </div>
@@ -698,8 +727,8 @@ const WriteLog: React.FC = () => {
 
                 {aiInputMode === 'FILE' ? (
                     <label className={`inline-flex items-center justify-center bg-white text-brand-700 px-6 py-4 rounded-xl font-bold text-sm cursor-pointer shadow-lg w-full md:w-auto ${isAnalyzing ? 'opacity-50' : ''}`}>
-                        {isAnalyzing ? '분석 중...' : <><UploadCloud className="mr-2"/> 파일 선택</>}
-                        <input type="file" className="hidden" onChange={handleAutoFillUpload} disabled={isAnalyzing} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"/>
+                        {isAnalyzing ? '대용량 분석 진행 중...' : <><Layers className="mr-2"/> 다중 파일 선택 (Drag & Drop)</>}
+                        <input type="file" multiple className="hidden" onChange={handleAutoFillUpload} disabled={isAnalyzing} accept=".pdf,.jpg,.jpeg,.png,.webp,.heic"/>
                     </label>
                 ) : (
                     <div className="flex flex-col gap-2">
@@ -859,7 +888,7 @@ const WriteLog: React.FC = () => {
                        className="w-full pl-10 rounded-lg border-slate-300 shadow-sm focus:border-brand-500 focus:ring-brand-500 py-2.5"
                        value={personStartDate}
                        onChange={(e) => setPersonStartDate(e.target.value)}
-                    />
+                   />
                 </div>
              </div>
 

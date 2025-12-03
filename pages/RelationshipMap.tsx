@@ -2,13 +2,14 @@
 import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { AffinityLevel } from '../types';
-import { Share2, User, Search, MapPin, Calendar, Crown, Filter, History } from 'lucide-react';
+import { Share2, Search, Calendar, Crown, Filter, History, Briefcase, MapPin } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 const RelationshipMap: React.FC = () => {
   const { courses, people } = useApp();
   const [filterAffinity, setFilterAffinity] = useState<AffinityLevel | 'ALL'>('ALL');
   const [filterDept, setFilterDept] = useState<'ALL' | 'MANAGEMENT' | 'COURSE' | 'OPERATIONS' | 'OTHER'>('ALL');
+  const [filterStatus, setFilterStatus] = useState<'ALL' | 'CURRENT' | 'PAST'>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
   const [hoveredNode, setHoveredNode] = useState<{ type: 'PERSON' | 'COURSE', id: string } | null>(null);
 
@@ -52,51 +53,62 @@ const RelationshipMap: React.FC = () => {
     }[] = [];
 
     people.forEach(p => {
-      const dept = getDepartmentCategory(p.currentRole);
-      
-      // Filter Logic
+      // Global Filters (Affinity & Search) - Applied to the person
       const matchAffinity = filterAffinity === 'ALL' || p.affinity === filterAffinity;
-      const matchDept = filterDept === 'ALL' || dept === filterDept;
       const matchSearch = searchTerm === '' || p.name.includes(searchTerm) || p.currentRole.includes(searchTerm);
 
-      if (matchAffinity && matchDept && matchSearch) {
-        // Current Role
-        if (p.currentCourseId) {
-          list.push({
-            courseId: p.currentCourseId,
-            personId: p.id,
-            personName: p.name,
-            personRole: p.currentRole,
-            personAffinity: p.affinity,
-            startDate: p.currentRoleStartDate,
-            type: 'CURRENT',
-            deptCategory: dept
-          });
-        }
-
-        // Past Roles
-        p.careers.forEach(career => {
-          if (career.courseId) {
-             const pastDept = getDepartmentCategory(career.role);
-             // Re-apply filters for past roles context if needed, but usually we filter by person attributes
-             // Here simply adding past records if the person matches filters
+      if (matchAffinity && matchSearch) {
+        // 1. Check Current Role
+        if (p.currentCourseId && (filterStatus === 'ALL' || filterStatus === 'CURRENT')) {
+           const currentDept = getDepartmentCategory(p.currentRole);
+           const matchCurrentDept = filterDept === 'ALL' || currentDept === filterDept;
+           
+           if (matchCurrentDept) {
              list.push({
-                courseId: career.courseId,
+                courseId: p.currentCourseId,
                 personId: p.id,
                 personName: p.name,
-                personRole: career.role,
-                personAffinity: p.affinity, // Affinity is person-level, assumed constant
-                startDate: career.startDate,
-                endDate: career.endDate,
-                type: 'PAST',
-                deptCategory: pastDept
+                personRole: p.currentRole,
+                personAffinity: p.affinity,
+                startDate: p.currentRoleStartDate,
+                type: 'CURRENT',
+                deptCategory: currentDept
              });
-          }
-        });
+           }
+        }
+
+        // 2. Check Past Roles
+        if (filterStatus === 'ALL' || filterStatus === 'PAST') {
+            p.careers.forEach(career => {
+                if (career.courseId) {
+                    const pastDept = getDepartmentCategory(career.role);
+                    const matchPastDept = filterDept === 'ALL' || pastDept === filterDept;
+
+                    // Search term search against past role as well if needed, 
+                    // but usually search matches Person Name. 
+                    // If strict search needed for role name:
+                    // const matchPastSearch = searchTerm === '' || p.name.includes(searchTerm) || career.role.includes(searchTerm);
+
+                    if (matchPastDept) {
+                        list.push({
+                            courseId: career.courseId,
+                            personId: p.id,
+                            personName: p.name,
+                            personRole: career.role,
+                            personAffinity: p.affinity, // Affinity is person-level
+                            startDate: career.startDate,
+                            endDate: career.endDate,
+                            type: 'PAST',
+                            deptCategory: pastDept
+                        });
+                    }
+                }
+            });
+        }
       }
     });
     return list;
-  }, [people, filterAffinity, filterDept, searchTerm]);
+  }, [people, filterAffinity, filterDept, filterStatus, searchTerm]);
 
   // Group by Course for the Hub View
   const hubData = useMemo(() => {
@@ -129,7 +141,7 @@ const RelationshipMap: React.FC = () => {
               <Share2 className="mr-2 text-brand-600" /> 인물 관계도 (Network Map)
            </h1>
            <p className="text-slate-500 text-sm mt-1">
-             골프장별 인물 배치, 근무 이력, 친밀도를 시각화합니다. (과거 근무자 포함)
+             골프장별 인물 배치, 근무 이력, 친밀도를 시각화합니다.
            </p>
         </div>
         
@@ -142,17 +154,34 @@ const RelationshipMap: React.FC = () => {
                 placeholder="이름/직책 검색" 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-brand-500 w-40"
+                className="pl-9 pr-3 py-1.5 rounded-lg border border-slate-300 text-sm focus:ring-2 focus:ring-brand-500 w-32 md:w-40"
               />
+           </div>
+
+           {/* Status Filter (New) */}
+           <div className="flex bg-white rounded-lg border border-slate-200 p-1">
+              {[
+                  { k: 'ALL', l: '전체' },
+                  { k: 'CURRENT', l: '현직' },
+                  { k: 'PAST', l: '전직' }
+              ].map(opt => (
+                  <button 
+                    key={opt.k}
+                    onClick={() => setFilterStatus(opt.k as any)}
+                    className={`px-2.5 py-1 text-xs font-bold rounded transition-colors ${filterStatus === opt.k ? 'bg-slate-800 text-white' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    {opt.l}
+                  </button>
+              ))}
            </div>
            
            {/* Dept Filter */}
            <div className="flex bg-white rounded-lg border border-slate-200 p-1">
               {[
                   { k: 'ALL', l: '전체' }, 
-                  { k: 'MANAGEMENT', l: '경영/임원' }, 
-                  { k: 'COURSE', l: '코스관리' },
-                  { k: 'OPERATIONS', l: '운영지원' }
+                  { k: 'MANAGEMENT', l: '경영' }, 
+                  { k: 'COURSE', l: '코스' },
+                  { k: 'OPERATIONS', l: '운영' }
               ].map(opt => (
                 <button 
                   key={opt.k}
@@ -292,8 +321,8 @@ const RelationshipMap: React.FC = () => {
 
                                             {/* Tooltip on Hover */}
                                             {isHovered && (
-                                                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-48 bg-white text-slate-900 p-3 rounded-lg shadow-xl border border-slate-200 z-50 animate-in fade-in slide-in-from-bottom-2 pointer-events-none">
-                                                    <div className="flex justify-between items-start mb-1">
+                                                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-56 bg-white text-slate-900 p-3 rounded-lg shadow-xl border border-slate-200 z-50 animate-in fade-in slide-in-from-bottom-2 pointer-events-none">
+                                                    <div className="flex justify-between items-start mb-2 border-b border-slate-100 pb-2">
                                                         <span className="font-bold text-sm flex items-center">
                                                             {personConn.personName}
                                                             {isPast && <span className="ml-1 text-[9px] bg-slate-200 text-slate-600 px-1 rounded">전직</span>}
@@ -302,7 +331,18 @@ const RelationshipMap: React.FC = () => {
                                                             {personConn.personAffinity > 0 ? '우호' : personConn.personAffinity < 0 ? '적대' : '중립'}
                                                         </span>
                                                     </div>
-                                                    <div className="text-xs text-slate-500 mb-2 font-medium">{personConn.personRole}</div>
+                                                    
+                                                    <div className="space-y-1 mb-2">
+                                                        <div className="flex items-center text-xs">
+                                                            <MapPin size={12} className="mr-1.5 text-slate-400" />
+                                                            <span className="font-bold text-slate-700">{course.name}</span>
+                                                        </div>
+                                                        <div className="flex items-center text-xs">
+                                                            <Briefcase size={12} className="mr-1.5 text-slate-400" />
+                                                            <span className="text-slate-600">{personConn.personRole}</span>
+                                                        </div>
+                                                    </div>
+
                                                     <div className="text-[10px] bg-slate-100 p-1.5 rounded flex items-center text-slate-600">
                                                         <Calendar size={10} className="mr-1.5"/> 
                                                         {isPast ? '근무 기간' : '재직 기간'}: <strong>{getTenure(personConn.startDate, personConn.endDate)}</strong>
@@ -338,8 +378,8 @@ const RelationshipMap: React.FC = () => {
              <div className="flex items-center"><span className="w-2.5 h-2.5 rounded-full bg-red-500 mr-1.5"></span> 적대적 (Hostile)</div>
           </div>
           <div className="flex flex-wrap gap-4 items-center border-l border-slate-200 pl-4">
-             <div className="flex items-center"><span className="w-8 h-0.5 bg-slate-400 mr-1.5"></span> 현직 (Current)</div>
-             <div className="flex items-center"><span className="w-8 h-0.5 border-t border-slate-400 border-dashed mr-1.5"></span> 전직 (Past)</div>
+             <div className="flex items-center"><Briefcase size={12} className="mr-1.5 text-slate-400"/> 직책 분류: 경영 / 코스 / 운영</div>
+             <div className="flex items-center"><History size={12} className="mr-1.5 text-slate-400"/> 상태: 현직 / 전직</div>
           </div>
       </div>
     </div>

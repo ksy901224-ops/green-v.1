@@ -31,6 +31,7 @@ const PersonDetail: React.FC = () => {
   );
 
   // Automatically enable archiving when role/course changes
+  // Only trigger when hasRoleChanged transitions (to avoid overriding user uncheck)
   useEffect(() => {
     if (hasRoleChanged) {
         setShouldArchive(true);

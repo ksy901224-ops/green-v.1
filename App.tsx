@@ -6,6 +6,7 @@ import Dashboard from './pages/Dashboard';
 import CourseList from './pages/CourseList';
 import CourseDetail from './pages/CourseDetail';
 import PersonDetail from './pages/PersonDetail';
+import RelationshipMap from './pages/RelationshipMap';
 import WriteLog from './pages/WriteLog';
 import Settings from './pages/Settings';
 import AdminTodo from './pages/AdminTodo';
@@ -27,6 +28,7 @@ const App: React.FC = () => {
             <Route path="/courses" element={<CourseList />} />
             <Route path="/courses/:id" element={<CourseDetail />} />
             <Route path="/people/:id" element={<PersonDetail />} />
+            <Route path="/relationship-map" element={<RelationshipMap />} />
             <Route path="/write" element={<WriteLog />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/admin-todos" element={<AdminTodo />} />

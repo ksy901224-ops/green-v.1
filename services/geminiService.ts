@@ -202,7 +202,7 @@ const validateAnalyzedData = (data: any): AnalyzedLogData => {
 };
 
 export const analyzeDocument = async (
-  inputData: { base64Data?: string, mimeType?: string, textData?: string }, 
+  inputData: { base64Data?: string, mimeType?: string, textData?: string }[], // Updated to accept Array
   existingCourseNames: string[] = []
 ): Promise<AnalyzedLogData[] | null> => {
   const apiKey = getApiKey();
@@ -212,94 +212,92 @@ export const analyzeDocument = async (
 
   // Construct content parts based on input type
   const contentParts: any[] = [];
+  const validMimeTypes = [
+    'application/pdf', 
+    'image/jpeg', 
+    'image/png', 
+    'image/webp', 
+    'image/heic', 
+    'image/heif'
+  ];
 
-  if (inputData.base64Data && inputData.mimeType) {
-    // 1. Input Validation: Check for valid mime types for files
-    const validMimeTypes = [
-      'application/pdf', 
-      'image/jpeg', 
-      'image/png', 
-      'image/webp', 
-      'image/heic', 
-      'image/heif'
-    ];
-    
-    if (!validMimeTypes.includes(inputData.mimeType)) {
-      throw new Error(`지원하지 않는 파일 형식(${inputData.mimeType})입니다. PDF 또는 이미지 파일(JPG, PNG, WEBP, HEIC)만 업로드 가능합니다.`);
-    }
+  let totalSizeInBytes = 0;
+  const MAX_BATCH_SIZE_BYTES = 25 * 1024 * 1024; // 25MB Batch Limit (Soft limit)
 
-    // 2. Strict Size Check (Approximate from Base64 length)
-    const approxSizeInBytes = (inputData.base64Data.length * 3) / 4;
-    const MAX_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+  // Iterate over all inputs (Batch Processing)
+  for (const item of inputData) {
+      if (item.base64Data && item.mimeType) {
+        if (!validMimeTypes.includes(item.mimeType)) {
+             throw new Error(`지원하지 않는 파일 형식(${item.mimeType})이 포함되어 있습니다.`);
+        }
+        
+        // Approximate size check
+        const size = (item.base64Data.length * 3) / 4;
+        totalSizeInBytes += size;
 
-    if (approxSizeInBytes > MAX_SIZE_BYTES) {
-       throw new Error(`파일 크기가 10MB를 초과했습니다 (${(approxSizeInBytes / (1024*1024)).toFixed(1)}MB). 더 작은 파일을 업로드해주세요.`);
-    }
-
-    contentParts.push({
-      inlineData: {
-        mimeType: inputData.mimeType,
-        data: inputData.base64Data
+        contentParts.push({
+            inlineData: {
+                mimeType: item.mimeType,
+                data: item.base64Data
+            }
+        });
+      } else if (item.textData) {
+        contentParts.push({
+            text: `[입력 텍스트 데이터]\n${item.textData}`
+        });
       }
-    });
-  } else if (inputData.textData) {
-    // Handling direct text input (Copy-paste)
-    contentParts.push({
-      text: `[입력된 텍스트 데이터 (엑셀 복사, 이메일, 채팅 로그 등)]\n${inputData.textData}`
-    });
-  } else {
-    throw new Error("분석할 데이터(파일 또는 텍스트)가 없습니다.");
+  }
+
+  if (contentParts.length === 0) {
+      throw new Error("분석할 데이터가 없습니다.");
+  }
+
+  if (totalSizeInBytes > MAX_BATCH_SIZE_BYTES) {
+      throw new Error(`전체 파일 크기가 25MB를 초과했습니다 (${(totalSizeInBytes / (1024*1024)).toFixed(1)}MB). 파일을 나누어 업로드해주세요.`);
   }
 
   // Add the prompt instruction
   contentParts.push({
     text: `
-      이 데이터는 골프장 관리, 건설 공사, 영업 일지, 또는 메신저 대화 내용입니다. 
-      입력된 데이터 형식(PDF, 이미지, 텍스트)에 맞춰 내용을 심층 분석하여 JSON **배열(Array)** 형식으로 추출해주세요.
-
-      [중요: 다중 골프장 자동 감지 및 분리]
-      - **하나의 파일/텍스트에 여러 골프장의 정보가 섞여 있는 경우, 반드시 골프장별로 내용을 분리하여 각각 별도의 객체(Object)로 만드세요.**
-      - 예: "A골프장은 배수공사 완료했고, B골프장은 견적 미팅함" -> [{courseName: "A", ...}, {courseName: "B", ...}]
-      - 뭉뚱그려 하나로 합치지 마세요. 각 골프장 별로 이슈를 개별적으로 분석해야 합니다.
+      당신은 고성능 문서 분석 AI입니다. 
+      제공된 ${contentParts.length}개의 파일(이미지, PDF) 또는 텍스트 데이터를 **전부** 분석해야 합니다.
+      
+      [필수 작업 지침]
+      1. **다중 문서 처리**: 여러 개의 파일이 입력되었습니다. 각 파일의 내용을 개별적으로 분석하여 **각각 별도의 업무 일지 항목**으로 추출하세요.
+         - 파일들이 서로 관련이 없다면 독립적인 객체로 만드세요.
+         - 하나의 파일 안에 여러 골프장 정보가 있다면 그것도 분리하세요.
+      
+      2. **형식 준수**: 결과는 반드시 단일 **JSON 배열(Array)**로 반환해야 합니다.
 
       [골프장 식별 및 신규 생성 규칙 (Entity Resolution & Creation)]
       현재 데이터베이스에 등록된 골프장 목록: [${existingCourseNames.join(', ')}]
       
       1. courseName: 문서에 언급된 골프장 이름을 추출하세요.
          - **매칭 우선**: 문서의 골프장 이름이 위 목록 중 하나와 유사하다면(예: '스카이뷰' vs '스카이뷰 CC'), **반드시 목록에 있는 정확한 이름을 사용**하세요.
-         - **신규 생성**: 목록에 없는 새로운 골프장이라면, 문서에 나온 이름을 그대로 사용하세요. (예: '베어크리크 포천')
+         - **신규 생성**: 목록에 없는 새로운 골프장이라면, 문서에 나온 이름을 그대로 사용하세요.
 
       [기본 정보 추출]
-      2. title: 해당 골프장 관련 내용을 요약한 구체적인 제목.
-      3. content: 해당 골프장 관련 업무 내용, 현장 상황, 결정 사항 요약.
-      4. date: 날짜 (YYYY-MM-DD). 없으면 오늘.
+      2. title: 내용을 요약한 구체적인 제목.
+      3. content: 업무 내용, 현장 상황, 결정 사항 요약.
+      4. date: 날짜 (YYYY-MM-DD). 문서 내 날짜가 없으면 오늘.
       
-      [스마트 분류 - 부서 및 태그 (Smart Defaults)]
-      5. department: ('영업', '연구소', '건설사업', '컨설팅', '관리') 중 하나를 문맥에 맞게 추론하세요. 
-         - **명확하지 않은 경우**: '영업'을 기본값으로 사용하지 말고, 내용에 '비용', '계약'이 있으면 '영업', '시공', '공사'가 있으면 '건설사업', '자문', '조언'이 있으면 '컨설팅'으로 지능적으로 판단하세요. 도저히 알 수 없으면 '영업'으로 하되, '관리'나 '기타' 가능성도 고려하세요.
-      6. tags: 상황별 구체적 태그 5~7개. **명확한 태그가 없다면 본문의 핵심 명사들을 태그로 추출하세요.**
+      [스마트 분류 - 부서 및 태그]
+      5. department: ('영업', '연구소', '건설사업', '컨설팅', '관리') 중 문맥에 맞게 추론.
+      6. tags: 상황별 구체적 태그 5~7개.
 
-      [상세 정보 추출 (Structured Data Extraction)]
+      [상세 정보 추출]
       7. project_name: 구체적인 프로젝트/공사명 (없으면 null).
       8. contact_person: 해당 건의 핵심 담당자 (없으면 null).
-      9. delivery_date: 마감 기한 (YYYY-MM-DD, 없으면 null).
+      9. delivery_date: 마감 기한 (없으면 null).
       10. participants: 회의 참석자나 관련 인물 이름 목록 (Array).
-      11. weather: 날씨 정보가 있다면 추출 (없으면 null).
+      11. weather: 날씨 정보 (없으면 null).
 
-      [심층 분석 및 인사이트 (Deep Insights - Per Course)]
-      12. key_issues: **해당 골프장에 특화된** 핵심 이슈 3~5가지.
-          - 일반론적인 이야기가 아닌, 해당 골프장의 구체적인 문제(예: 5번홀 배수 불량, A업체 저가 수주 시도)를 짚어내세요.
-          - **Risk Assessment**: 공기 지연, 민원, 안전 사고 등 리스크 요인.
-          - **Competitor Intelligence**: 경쟁사 동향 포착.
-      
-      13. **summary_report**: (필수) 해당 건에 대한 심층 요약 리포트 (3~4문장).
-          - "무엇이 문제이고, 어떤 맥락이며, 향후 어떤 조치가 필요한지"를 관리자에게 보고하듯이 작성하세요.
+      [심층 분석 (Deep Insights)]
+      12. key_issues: 해당 건의 핵심 이슈 3~5가지.
+      13. **summary_report**: (필수) 심층 요약 리포트 (3~4문장).
 
-      [신규 골프장 정보 자동 등록 (Auto-Registration Info)]
-      14. course_info: **만약 위에서 식별한 courseName이 기존 목록에 없는 새로운 골프장인 경우에만** 아래 정보를 추출하세요. 기존 골프장이라면 빈 객체({})로 반환.
-          - address: 주소 (시/군/구 단위).
-          - holes: 홀 수 (추정 불가시 18).
-          - type: (회원제, 대중제). 추정 불가시 '대중제'.
+      [신규 골프장 정보 (New Course Only)]
+      14. course_info: **기존 목록에 없는 새로운 골프장인 경우에만** 주소, 홀 수, 타입(회원제/대중제)을 추출.
 
       출력은 반드시 JSON 배열([]) 형식이어야 합니다.
     `
@@ -315,7 +313,7 @@ export const analyzeDocument = async (
         config: {
           responseMimeType: "application/json",
           responseSchema: {
-            type: Type.ARRAY, // Changed to ARRAY to support multiple courses
+            type: Type.ARRAY,
             items: {
                 type: Type.OBJECT,
                 properties: {
@@ -370,7 +368,6 @@ export const analyzeDocument = async (
     if (Array.isArray(parsedData)) {
         return parsedData.map(validateAnalyzedData);
     } else if (typeof parsedData === 'object') {
-        // Fallback if AI returns single object despite prompt
         return [validateAnalyzedData(parsedData)];
     } else {
         throw new Error("AI 응답 데이터 형식이 맞지 않습니다.");
@@ -516,10 +513,13 @@ export const searchAppWithAI = async (query: string, appContextData: {
     }))
   });
 
+  const todayDate = new Date().toLocaleDateString('ko-KR', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
   const prompt = `
     You are an intelligent internal search engine for a Golf Course Management System (GreenMaster).
     The user is asking a question about their stored data (Logs, People, Golf Courses).
     
+    [Current System Date]: ${todayDate} (Use this for relative date calculations like 'last week', 'yesterday', 'recent')
     [User Query]: "${query}"
 
     [Database Context]:
@@ -527,11 +527,12 @@ export const searchAppWithAI = async (query: string, appContextData: {
 
     [Instructions]:
     1. Search through the provided Database Context to find the answer.
-    2. Answer strictly based on the provided data. Do not use outside knowledge unless it's general common sense.
-    3. If the answer is found, summarize it clearly in Korean. 
-       - Cite the source (e.g., "From the log on 2024-05-20...").
-    4. If the information is not in the database, explicitly state: "시스템 데이터에서 관련 정보를 찾을 수 없습니다."
-    5. Be concise and professional.
+    2. **Date Handling**: Carefully interpret relative dates (e.g., "recent 1 week", "last month") using [Current System Date].
+    3. Answer strictly based on the provided data. Do not use outside knowledge unless it's general common sense.
+    4. If the answer is found, summarize it clearly in Korean.
+       - **Citation Requirement**: You MUST cite the source date and title for every fact. (e.g., "(출처: 2024-05-20 [제목])").
+    5. If the information is not in the database, explicitly state: "시스템 데이터에서 관련 정보를 찾을 수 없습니다."
+    6. Be concise and professional.
   `;
 
   try {
