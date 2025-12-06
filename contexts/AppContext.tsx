@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { LogEntry, Department, GolfCourse, UserProfile, UserRole, UserStatus, Person, CareerRecord, ExternalEvent, AffinityLevel } from '../types';
 import { MOCK_LOGS, MOCK_COURSES, MOCK_PEOPLE, MOCK_EXTERNAL_EVENTS } from '../constants';
+import { subscribeToCollection, saveDocument, updateDocument, deleteDocument, seedCollection } from '../services/firestoreService';
 
 interface AppContextType {
   user: UserProfile | null;
@@ -11,7 +12,7 @@ interface AppContextType {
   logout: () => void;
   updateUserStatus: (userId: string, status: UserStatus) => void;
   updateUserRole: (userId: string, role: UserRole) => void;
-  updateUserDepartment: (userId: string, department: Department) => void; // New Function
+  updateUserDepartment: (userId: string, department: Department) => void;
   logs: LogEntry[];
   courses: GolfCourse[];
   people: Person[];
@@ -27,7 +28,6 @@ interface AppContextType {
   addExternalEvent: (event: ExternalEvent) => void;
   refreshLogs: () => void;
   isSimulatedLive: boolean;
-  // Permission Helpers
   canUseAI: boolean;
   canViewFullData: boolean;
   isAdmin: boolean;
@@ -40,28 +40,96 @@ const DEFAULT_ADMIN: UserProfile = {
   id: 'admin-01',
   name: '김관리 (System)',
   email: 'admin@greenmaster.com',
-  role: UserRole.SENIOR, // Default to Senior/Admin
+  role: UserRole.SENIOR, 
   department: Department.MANAGEMENT,
   avatar: 'https://ui-avatars.com/api/?name=Admin+Kim&background=0D9488&color=fff',
   status: 'APPROVED'
 };
 
 export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  // --- Authentication State ---
+  // --- Data State (Now driven by Firestore) ---
+  const [logs, setLogs] = useState<LogEntry[]>([]);
+  const [courses, setCourses] = useState<GolfCourse[]>([]);
+  const [people, setPeople] = useState<Person[]>([]);
+  const [externalEvents, setExternalEvents] = useState<ExternalEvent[]>([]);
+  
+  // Auth state also synced from Firestore 'users' collection
+  const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [user, setUser] = useState<UserProfile | null>(() => {
     const savedUser = localStorage.getItem('greenmaster_user');
     return savedUser ? JSON.parse(savedUser) : null;
   });
 
-  const [allUsers, setAllUsers] = useState<UserProfile[]>(() => {
-    const savedAllUsers = localStorage.getItem('greenmaster_all_users');
-    return savedAllUsers ? JSON.parse(savedAllUsers) : [DEFAULT_ADMIN];
-  });
-
+  // --- Firestore Subscriptions ---
   useEffect(() => {
-    localStorage.setItem('greenmaster_all_users', JSON.stringify(allUsers));
-  }, [allUsers]);
+    // 1. Logs
+    const unsubLogs = subscribeToCollection('logs', (data) => {
+      if (data.length === 0) { 
+        // Auto-seed if empty to match "screen I see now"
+        seedCollection('logs', MOCK_LOGS); 
+      } else { 
+        setLogs(data as LogEntry[]); 
+      }
+    });
 
+    // 2. Courses
+    const unsubCourses = subscribeToCollection('courses', (data) => {
+      if (data.length === 0) { 
+        seedCollection('courses', MOCK_COURSES); 
+      } else { 
+        setCourses(data as GolfCourse[]); 
+      }
+    });
+
+    // 3. People
+    const unsubPeople = subscribeToCollection('people', (data) => {
+      if (data.length === 0) { 
+        seedCollection('people', MOCK_PEOPLE); 
+      } else { 
+        setPeople(data as Person[]); 
+      }
+    });
+
+    // 4. Events
+    const unsubEvents = subscribeToCollection('external_events', (data) => {
+      if (data.length === 0) { 
+        seedCollection('external_events', MOCK_EXTERNAL_EVENTS); 
+      } else { 
+        setExternalEvents(data as ExternalEvent[]); 
+      }
+    });
+
+    // 5. Users
+    const unsubUsers = subscribeToCollection('users', (data) => {
+      if (data.length === 0) { 
+        seedCollection('users', [DEFAULT_ADMIN]); 
+      } else { 
+        const fetchedUsers = data as UserProfile[];
+        setAllUsers(fetchedUsers);
+        
+        // Real-time update of current user permission
+        if (user) {
+            const updatedSelf = fetchedUsers.find(u => u.id === user.id);
+            if (updatedSelf) {
+                // Only update if something changed
+                if(JSON.stringify(updatedSelf) !== JSON.stringify(user)) {
+                    setUser(updatedSelf);
+                    localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
+                }
+            } else {
+                // User deleted from DB?
+                // Optional: Force logout if user no longer exists in DB
+            }
+        }
+      }
+    });
+
+    return () => {
+      unsubLogs(); unsubCourses(); unsubPeople(); unsubEvents(); unsubUsers();
+    };
+  }, [user?.id]); // Depend on user.id to ensure self-update logic works
+
+  // --- Auth Actions ---
   const login = async (email: string): Promise<string | void> => {
     const foundUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
     if (!foundUser) return '등록된 이메일이 아닙니다. 회원가입을 진행해주세요.';
@@ -80,12 +148,13 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: `user-${Date.now()}`,
       name,
       email,
-      role: UserRole.INTERMEDIATE, // Default to Intermediate
+      role: UserRole.INTERMEDIATE,
       department,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
       status: 'PENDING'
     };
-    setAllUsers(prev => [...prev, newUser]);
+    // Save to Firestore
+    await saveDocument('users', newUser);
   };
 
   const logout = () => {
@@ -93,119 +162,71 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
     localStorage.removeItem('greenmaster_user');
   };
 
-  const updateUserStatus = (userId: string, status: UserStatus) => {
-    setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, status } : u));
+  const updateUserStatus = async (userId: string, status: UserStatus) => {
+    await updateDocument('users', userId, { status });
   };
 
-  const updateUserRole = (userId: string, role: UserRole) => {
-    setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
-    // If updating self, update local state
-    if (user && user.id === userId) {
-        const updatedSelf = { ...user, role };
-        setUser(updatedSelf);
-        localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
-    }
+  const updateUserRole = async (userId: string, role: UserRole) => {
+    await updateDocument('users', userId, { role });
   };
 
-  const updateUserDepartment = (userId: string, department: Department) => {
-    setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, department } : u));
-    // If updating self, update local state
-    if (user && user.id === userId) {
-        const updatedSelf = { ...user, department };
-        setUser(updatedSelf);
-        localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
-    }
+  const updateUserDepartment = async (userId: string, department: Department) => {
+    await updateDocument('users', userId, { department });
   };
 
-  // --- Data State ---
-  const [logs, setLogs] = useState<LogEntry[]>(() => {
-    const savedLogs = localStorage.getItem('greenmaster_logs');
-    return savedLogs ? JSON.parse(savedLogs) : MOCK_LOGS;
-  });
+  // --- CRUD Actions (Now using Firestore) ---
+  const addLog = (log: LogEntry) => saveDocument('logs', log);
+  const updateLog = (log: LogEntry) => updateDocument('logs', log.id, log);
+  const deleteLog = (id: string) => deleteDocument('logs', id);
 
-  const [courses, setCourses] = useState<GolfCourse[]>(() => {
-    const savedCourses = localStorage.getItem('greenmaster_courses');
-    return savedCourses ? JSON.parse(savedCourses) : MOCK_COURSES;
-  });
+  const addCourse = (course: GolfCourse) => saveDocument('courses', course);
+  const updateCourse = (course: GolfCourse) => updateDocument('courses', course.id, course);
+  const deleteCourse = (id: string) => deleteDocument('courses', id);
 
-  const [people, setPeople] = useState<Person[]>(() => {
-    const savedPeople = localStorage.getItem('greenmaster_people');
-    return savedPeople ? JSON.parse(savedPeople) : MOCK_PEOPLE;
-  });
+  // Smart Person Add (Deduplication Logic preserved but async)
+  const addPerson = async (newPerson: Person) => {
+    const normalize = (s: string) => s.trim().replace(/\s+/g, '').toLowerCase();
+    // Use current 'people' state which is synced from DB
+    const existing = people.find(p => normalize(p.name) === normalize(newPerson.name));
 
-  const [externalEvents, setExternalEvents] = useState<ExternalEvent[]>(() => {
-    const savedEvents = localStorage.getItem('greenmaster_events');
-    return savedEvents ? JSON.parse(savedEvents) : MOCK_EXTERNAL_EVENTS;
-  });
-  
-  const [isSimulatedLive] = useState(true);
-
-  useEffect(() => { localStorage.setItem('greenmaster_logs', JSON.stringify(logs)); }, [logs]);
-  useEffect(() => { localStorage.setItem('greenmaster_courses', JSON.stringify(courses)); }, [courses]);
-  useEffect(() => { localStorage.setItem('greenmaster_people', JSON.stringify(people)); }, [people]);
-  useEffect(() => { localStorage.setItem('greenmaster_events', JSON.stringify(externalEvents)); }, [externalEvents]);
-
-  const addLog = (log: LogEntry) => setLogs(prev => [log, ...prev]);
-  const updateLog = (updatedLog: LogEntry) => setLogs(prev => prev.map(log => log.id === updatedLog.id ? updatedLog : log));
-  const deleteLog = (id: string) => setLogs(prev => prev.filter(log => log.id !== id));
-
-  const addCourse = (course: GolfCourse) => setCourses(prev => [...prev, course]);
-  const updateCourse = (updatedCourse: GolfCourse) => setCourses(prev => prev.map(c => c.id === updatedCourse.id ? updatedCourse : c));
-  const deleteCourse = (id: string) => setCourses(prev => prev.filter(c => c.id !== id));
-
-  // --- Smart Person Management with Deduplication ---
-  const addPerson = (newPerson: Person) => {
-    setPeople(prevPeople => {
-      const normalize = (s: string) => s.trim().replace(/\s+/g, '').toLowerCase();
-      const existingIndex = prevPeople.findIndex(p => normalize(p.name) === normalize(newPerson.name));
-
-      if (existingIndex !== -1) {
-        const existingPerson = prevPeople[existingIndex];
+    if (existing) {
+        let updatedCareers = [...existing.careers];
+        const isRoleChanged = newPerson.currentCourseId && (newPerson.currentCourseId !== existing.currentCourseId);
         
-        let updatedCareers = [...existingPerson.careers];
-        const isRoleChanged = newPerson.currentCourseId && (newPerson.currentCourseId !== existingPerson.currentCourseId);
-        
-        if (isRoleChanged && existingPerson.currentCourseId) {
-             const oldCourse = courses.find(c => c.id === existingPerson.currentCourseId);
+        if (isRoleChanged && existing.currentCourseId) {
+             const oldCourse = courses.find(c => c.id === existing.currentCourseId);
              updatedCareers.push({
-                 courseId: existingPerson.currentCourseId,
+                 courseId: existing.currentCourseId,
                  courseName: oldCourse?.name || 'Unknown Course',
-                 role: existingPerson.currentRole,
-                 startDate: existingPerson.currentRoleStartDate || '',
+                 role: existing.currentRole,
+                 startDate: existing.currentRoleStartDate || '',
                  endDate: new Date().toISOString().split('T')[0],
                  description: 'Auto-archived upon merge with new data'
              });
         }
 
         const merged: Person = {
-            ...existingPerson,
-            phone: newPerson.phone || existingPerson.phone,
-            currentRole: newPerson.currentRole || existingPerson.currentRole,
-            currentCourseId: newPerson.currentCourseId || existingPerson.currentCourseId,
-            currentRoleStartDate: newPerson.currentRoleStartDate || existingPerson.currentRoleStartDate,
-            affinity: newPerson.affinity !== 0 ? newPerson.affinity : existingPerson.affinity,
-            notes: existingPerson.notes + (newPerson.notes ? `\n\n[Merged Info]: ${newPerson.notes}` : ''),
+            ...existing,
+            phone: newPerson.phone || existing.phone,
+            currentRole: newPerson.currentRole || existing.currentRole,
+            currentCourseId: newPerson.currentCourseId || existing.currentCourseId,
+            currentRoleStartDate: newPerson.currentRoleStartDate || existing.currentRoleStartDate,
+            affinity: newPerson.affinity !== 0 ? newPerson.affinity : existing.affinity,
+            notes: existing.notes + (newPerson.notes ? `\n\n[Merged Info]: ${newPerson.notes}` : ''),
             careers: updatedCareers
         };
-
-        const newPeopleList = [...prevPeople];
-        newPeopleList[existingIndex] = merged;
-        return newPeopleList;
-      }
-      return [...prevPeople, newPerson];
-    });
+        await updateDocument('people', existing.id, merged);
+    } else {
+        await saveDocument('people', newPerson);
+    }
   };
 
-  const updatePerson = (updatedPerson: Person) => {
-    setPeople(prev => prev.map(p => p.id === updatedPerson.id ? updatedPerson : p));
-  };
+  const updatePerson = (person: Person) => updateDocument('people', person.id, person);
+  const addExternalEvent = (event: ExternalEvent) => saveDocument('external_events', event);
+  const refreshLogs = () => {}; // No-op, sync is automatic
 
-  const addExternalEvent = (event: ExternalEvent) => setExternalEvents(prev => [...prev, event]);
-  const refreshLogs = () => {};
-
-  // --- Permission Logic ---
+  const isSimulatedLive = true;
   const canUseAI = user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN;
-  // Intermediate can view full data, but not use AI. Junior cannot view sensitive data (logs/people).
   const canViewFullData = user?.role === UserRole.SENIOR || user?.role === UserRole.INTERMEDIATE || user?.role === UserRole.ADMIN;
   const isAdmin = user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN;
 
