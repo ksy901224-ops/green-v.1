@@ -1,12 +1,12 @@
 
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { UserRole, UserStatus } from '../types';
+import { UserRole, UserStatus, Department } from '../types';
 import { Users, UserPlus, CheckCircle, XCircle, Shield, AlertTriangle, Search, Activity, Ban, RotateCcw, Lock, Unlock, FileText, Siren } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard: React.FC = () => {
-  const { user, allUsers, updateUserStatus, updateUserRole, logs, courses } = useApp();
+  const { user, allUsers, updateUserStatus, updateUserRole, updateUserDepartment, logs, courses } = useApp();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
 
@@ -198,7 +198,7 @@ const AdminDashboard: React.FC = () => {
                 <thead className="bg-slate-50 text-slate-500 font-semibold border-b border-slate-200 uppercase tracking-wider text-xs">
                     <tr>
                         <th className="px-6 py-4">사용자 식별</th>
-                        <th className="px-6 py-4">소속 부서</th>
+                        <th className="px-6 py-4">소속 부서 (Dept)</th>
                         <th className="px-6 py-4">보안 권한 (Role)</th>
                         <th className="px-6 py-4">계정 상태</th>
                         <th className="px-6 py-4 text-right">보안 조치</th>
@@ -223,9 +223,16 @@ const AdminDashboard: React.FC = () => {
                                     </div>
                                 </td>
                                 <td className="px-6 py-4">
-                                    <span className="inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium bg-slate-100 text-slate-700">
-                                        {u.department}
-                                    </span>
+                                    <select 
+                                        value={u.department}
+                                        onChange={(e) => updateUserDepartment(u.id, e.target.value as Department)}
+                                        disabled={u.status !== 'APPROVED'}
+                                        className="text-xs border rounded-md py-1.5 px-2 font-medium focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:opacity-50 disabled:cursor-not-allowed bg-white text-slate-700 border-slate-300"
+                                    >
+                                        {Object.values(Department).map(dept => (
+                                            <option key={dept} value={dept}>{dept}</option>
+                                        ))}
+                                    </select>
                                 </td>
                                 <td className="px-6 py-4">
                                     <select 

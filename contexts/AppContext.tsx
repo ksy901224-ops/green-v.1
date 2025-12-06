@@ -11,6 +11,7 @@ interface AppContextType {
   logout: () => void;
   updateUserStatus: (userId: string, status: UserStatus) => void;
   updateUserRole: (userId: string, role: UserRole) => void;
+  updateUserDepartment: (userId: string, department: Department) => void; // New Function
   logs: LogEntry[];
   courses: GolfCourse[];
   people: Person[];
@@ -98,8 +99,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   const updateUserRole = (userId: string, role: UserRole) => {
     setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, role } : u));
+    // If updating self, update local state
     if (user && user.id === userId) {
         const updatedSelf = { ...user, role };
+        setUser(updatedSelf);
+        localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
+    }
+  };
+
+  const updateUserDepartment = (userId: string, department: Department) => {
+    setAllUsers(prev => prev.map(u => u.id === userId ? { ...u, department } : u));
+    // If updating self, update local state
+    if (user && user.id === userId) {
+        const updatedSelf = { ...user, department };
         setUser(updatedSelf);
         localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
     }
@@ -198,7 +210,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const isAdmin = user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN;
 
   const value = {
-    user, allUsers, login, register, logout, updateUserStatus, updateUserRole,
+    user, allUsers, login, register, logout, updateUserStatus, updateUserRole, updateUserDepartment,
     logs, courses, people, externalEvents,
     addLog, updateLog, deleteLog,
     addCourse, updateCourse, deleteCourse,

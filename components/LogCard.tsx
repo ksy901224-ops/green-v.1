@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { LogEntry, Department, UserRole } from '../types';
-import { Calendar, Tag, Image as ImageIcon, Sparkles, Loader2, X, Edit2, Trash2, ChevronDown, ChevronUp, Info, CheckCircle } from 'lucide-react';
+import { Calendar, Tag, Image as ImageIcon, Sparkles, Loader2, X, Edit2, Trash2, ChevronDown, ChevronUp, Info, CheckCircle, User, AlertTriangle, Lightbulb, Target } from 'lucide-react';
 import { analyzeLogEntry } from '../services/geminiService';
 import { useApp } from '../contexts/AppContext';
 import { useNavigate } from 'react-router-dom';
@@ -10,13 +10,13 @@ interface LogCardProps {
   log: LogEntry;
 }
 
-const getDeptColor = (dept: Department) => {
+const getDeptBadgeStyle = (dept: Department) => {
   switch (dept) {
-    case Department.SALES: return 'bg-blue-100 text-blue-800 border-blue-200';
-    case Department.RESEARCH: return 'bg-purple-100 text-purple-800 border-purple-200';
-    case Department.CONSTRUCTION: return 'bg-orange-100 text-orange-800 border-orange-200';
-    case Department.CONSULTING: return 'bg-emerald-100 text-emerald-800 border-emerald-200';
-    default: return 'bg-slate-100 text-slate-800 border-slate-200';
+    case Department.SALES: return 'bg-blue-50 text-blue-700 border-blue-200 ring-blue-500/20';
+    case Department.RESEARCH: return 'bg-purple-50 text-purple-700 border-purple-200 ring-purple-500/20';
+    case Department.CONSTRUCTION: return 'bg-orange-50 text-orange-700 border-orange-200 ring-orange-500/20';
+    case Department.CONSULTING: return 'bg-emerald-50 text-emerald-700 border-emerald-200 ring-emerald-500/20';
+    default: return 'bg-slate-50 text-slate-700 border-slate-200 ring-slate-500/20';
   }
 };
 
@@ -32,14 +32,8 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
     e.preventDefault();
     e.stopPropagation();
     
-    if (showInsight) {
-      return;
-    }
-
-    if (insight) {
-      setShowInsight(true);
-      return;
-    }
+    if (showInsight) return;
+    if (insight) { setShowInsight(true); return; }
 
     setIsLoading(true);
     try {
@@ -68,12 +62,52 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
     navigate('/write', { state: { log } });
   };
 
-  const renderInsightContent = (text: string) => {
-    return text.split(/(\*\*.*?\*\*)/).map((part, index) => {
-      if (part.startsWith('**') && part.endsWith('**')) {
-        return <strong key={index} className="font-bold text-brand-800 block mt-3 mb-1 text-base border-l-4 border-brand-500 pl-2 bg-brand-50/50 py-1 rounded-r">{part.slice(2, -2)}</strong>;
+  // Structured parser for Gemini output
+  const renderStructuredInsight = (text: string) => {
+    // Regex to split by numbered sections (e.g., "1. **Title**:")
+    const parts = text.split(/(?=\d+\.\s\*\*)/);
+
+    return parts.map((part, index) => {
+      const headerMatch = part.match(/\*\*(.*?)\*\*/);
+      
+      if (!headerMatch) {
+        if(part.trim()) return <p key={index} className="mb-4 text-sm text-slate-600 px-1">{part}</p>;
+        return null;
       }
-      return <span key={index}>{part}</span>;
+
+      const rawTitle = headerMatch[1].replace(/:$/, '').trim(); 
+      // Clean up body: remove the header match and the numbering/colons at start
+      const body = part.replace(headerMatch[0], '').replace(/^\d+\.\s*:?/, '').trim(); 
+
+      let styleClass = "bg-slate-50 border-slate-200";
+      let titleClass = "text-slate-700";
+      let Icon = Info;
+
+      if (rawTitle.includes("요약")) {
+        styleClass = "bg-indigo-50 border-indigo-100";
+        titleClass = "text-indigo-700";
+        Icon = Lightbulb;
+      } else if (rawTitle.includes("리스크") || rawTitle.includes("함의")) {
+        styleClass = "bg-amber-50 border-amber-100";
+        titleClass = "text-amber-700";
+        Icon = AlertTriangle;
+      } else if (rawTitle.includes("액션") || rawTitle.includes("추천")) {
+        styleClass = "bg-emerald-50 border-emerald-100";
+        titleClass = "text-emerald-700";
+        Icon = Target;
+      }
+
+      return (
+        <div key={index} className={`rounded-xl border p-4 mb-4 last:mb-0 shadow-sm transition-all hover:shadow-md ${styleClass}`}>
+          <h4 className={`font-bold text-sm mb-2 flex items-center ${titleClass}`}>
+            <Icon size={16} className="mr-2" />
+            {rawTitle}
+          </h4>
+          <p className="text-slate-700 text-sm leading-relaxed whitespace-pre-line pl-1">
+            {body.replace(/^:/, '').trim()}
+          </p>
+        </div>
+      );
     });
   };
 
@@ -82,54 +116,50 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
 
   return (
     <>
-      <div className="bg-white rounded-lg shadow-sm border border-slate-200 p-4 hover:shadow-md transition-shadow relative group">
-        <div className="flex justify-between items-start mb-2">
-          <div className="flex items-center space-x-2">
-            <span className={`text-xs font-bold px-2 py-1 rounded-full border ${getDeptColor(log.department)}`}>
+      <div className="bg-white rounded-2xl border border-slate-200 p-5 hover:border-brand-300 hover:shadow-lg transition-all duration-300 group relative flex flex-col h-full transform hover:-translate-y-1">
+        
+        {/* Header Row */}
+        <div className="flex justify-between items-start mb-3">
+          <div className="flex items-center gap-2">
+            <span className={`text-[10px] font-bold px-2.5 py-1 rounded-full border ring-1 inset-0 ${getDeptBadgeStyle(log.department)}`}>
               {log.department}
             </span>
-            <span className="text-sm text-slate-500 font-medium">{log.courseName}</span>
+            <span className="text-xs text-slate-400 font-medium flex items-center">
+               <span className="mx-1.5">•</span> {log.courseName}
+            </span>
           </div>
           
-          <div className="flex items-center space-x-2">
-            <div className="flex items-center text-xs text-slate-400">
-              <Calendar size={12} className="mr-1" />
+          <div className="flex items-center">
+            <div className="flex items-center text-xs text-slate-400 font-mono">
               {log.date}
             </div>
             
-            {/* Edit/Delete Actions - Restricted to ADMIN/SENIOR */}
+            {/* Admin Actions */}
             {isAdmin && (
-              <div className="flex items-center space-x-1 pl-2 border-l border-slate-100 ml-2">
-                <button 
-                  onClick={handleEdit} 
-                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded transition-colors" 
-                  title="수정"
-                >
-                  <Edit2 size={16} />
+              <div className="flex items-center space-x-1 ml-3 opacity-0 group-hover:opacity-100 transition-opacity bg-slate-50 rounded-lg p-0.5 border border-slate-100">
+                <button onClick={handleEdit} className="p-1.5 text-slate-400 hover:text-blue-600 rounded-md transition-colors" title="수정">
+                  <Edit2 size={14} />
                 </button>
-                <button 
-                  onClick={handleDelete} 
-                  className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded transition-colors" 
-                  title="삭제"
-                >
-                  <Trash2 size={16} />
+                <button onClick={handleDelete} className="p-1.5 text-slate-400 hover:text-red-600 rounded-md transition-colors" title="삭제">
+                  <Trash2 size={14} />
                 </button>
               </div>
             )}
           </div>
         </div>
         
-        <h3 className="text-lg font-bold text-slate-900 mb-1 pr-16">{log.title}</h3>
+        {/* Title */}
+        <h3 className="text-lg font-bold text-slate-800 mb-2 leading-tight group-hover:text-brand-700 transition-colors">
+            {log.title}
+        </h3>
         
-        {/* Content with Expand/Collapse Animation */}
+        {/* Content Body */}
         <div 
-          className={`relative text-slate-600 text-sm whitespace-pre-line overflow-hidden transition-all duration-500 ease-in-out ${
+          className={`relative text-slate-600 text-sm leading-relaxed whitespace-pre-line overflow-hidden transition-all duration-500 ease-in-out ${
             isExpanded ? 'max-h-[1000px] mb-4' : 'max-h-20 mb-1'
           }`}
         >
             {log.content}
-            
-            {/* Gradient Overlay when collapsed */}
             {!isExpanded && shouldTruncate && (
               <div 
                 className="absolute bottom-0 left-0 w-full h-12 bg-gradient-to-t from-white via-white/90 to-transparent cursor-pointer"
@@ -141,51 +171,44 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
         {shouldTruncate && (
           <button 
             onClick={(e) => { e.stopPropagation(); setIsExpanded(!isExpanded); }}
-            className="flex items-center text-xs font-bold text-slate-400 hover:text-brand-600 mb-3 transition-colors focus:outline-none"
+            className="flex items-center text-xs font-bold text-slate-400 hover:text-brand-600 mb-4 transition-colors focus:outline-none w-fit"
           >
-            {isExpanded ? (
-              <>
-                접기 <ChevronUp size={14} className="ml-1"/>
-              </>
-            ) : (
-              <>
-                더 읽기 <ChevronDown size={14} className="ml-1"/>
-              </>
-            )}
+            {isExpanded ? <>접기 <ChevronUp size={14} className="ml-1"/></> : <>더 읽기 <ChevronDown size={14} className="ml-1"/></>}
           </button>
         )}
 
+        {/* Images */}
         {log.imageUrls && log.imageUrls.length > 0 && (
-          <div className="flex overflow-x-auto space-x-2 mb-3 pb-2">
+          <div className="flex overflow-x-auto space-x-2 mb-4 pb-2 no-scrollbar">
             {log.imageUrls.map((url, idx) => (
-              <img key={idx} src={url} alt="Attachment" className="h-20 w-20 object-cover rounded-md flex-shrink-0 border border-slate-200" />
+              <img key={idx} src={url} alt="Attachment" className="h-24 w-24 object-cover rounded-lg flex-shrink-0 border border-slate-100 shadow-sm hover:scale-105 transition-transform" />
             ))}
           </div>
         )}
 
-        <div className="flex items-center justify-between pt-3 border-t border-slate-100 mt-1">
-          <div className="flex items-center space-x-2 overflow-hidden flex-1 flex-wrap gap-y-1">
+        {/* Footer Info & Actions */}
+        <div className="mt-auto pt-4 border-t border-slate-50 flex items-center justify-between">
+          <div className="flex items-center space-x-2 overflow-hidden flex-1 flex-wrap gap-y-2">
             {log.tags?.map((tag, idx) => (
-              <span key={idx} className="flex items-center text-xs text-slate-500 bg-slate-50 px-1.5 py-0.5 rounded">
-                <Tag size={10} className="mr-1" /> {tag}
+              <span key={idx} className="flex items-center text-[10px] text-slate-500 bg-slate-100 px-2 py-1 rounded-md font-medium border border-slate-200">
+                <Tag size={10} className="mr-1 opacity-70" /> {tag}
               </span>
             ))}
           </div>
           
           <div className="flex items-center space-x-3 shrink-0 ml-2">
-              <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">
-                  작성자: {log.author}
+              <span className="text-xs text-slate-400 flex items-center bg-slate-50 px-2 py-1 rounded-full">
+                  <User size={10} className="mr-1"/> {log.author}
               </span>
               {canUseAI && (
                   <button 
                       onClick={handleAnalyze}
                       disabled={isLoading}
-                      className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
+                      className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full border transition-all shadow-sm ${
                           showInsight 
                           ? 'bg-purple-100 text-purple-700 border-purple-200 ring-2 ring-purple-100' 
-                          : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 hover:shadow-sm'
+                          : 'bg-white text-slate-500 border-slate-200 hover:bg-gradient-to-r hover:from-purple-500 hover:to-indigo-500 hover:text-white hover:border-transparent'
                       }`}
-                      title="이 업무 기록의 맥락과 리스크를 AI로 분석합니다"
                   >
                       {isLoading ? <Loader2 size={12} className="animate-spin mr-1" /> : <Sparkles size={12} className="mr-1" />}
                       {isLoading ? '분석 중...' : 'AI Insight'}
@@ -198,57 +221,64 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
       {/* AI Insight Modal Popup */}
       {showInsight && insight && !isLoading && (
         <div 
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200"
           onClick={() => setShowInsight(false)}
         >
           <div 
-            className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200 max-h-[90vh]"
+            className="bg-white rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col relative animate-in zoom-in-95 duration-200 max-h-[90vh] ring-1 ring-white/20"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Modal Header */}
-            <div className="bg-gradient-to-r from-purple-700 to-indigo-800 p-4 flex justify-between items-center shrink-0">
+            <div className="bg-gradient-to-r from-purple-700 to-indigo-800 p-5 flex justify-between items-center shrink-0">
                <div className="flex items-center text-white">
-                  <div className="bg-white/20 p-1.5 rounded-lg mr-3">
-                    <Sparkles className="text-yellow-300" size={20} />
+                  <div className="bg-white/20 p-2 rounded-xl mr-3 shadow-inner">
+                    <Sparkles className="text-amber-300" size={24} />
                   </div>
                   <div>
-                    <h3 className="font-bold text-lg leading-none">AI Insight Report</h3>
-                    <p className="text-[11px] text-purple-200 mt-0.5 opacity-90">Deep analysis by Gemini 2.5 Flash</p>
+                    <h3 className="font-bold text-lg leading-none tracking-tight">AI Insight Report</h3>
+                    <p className="text-xs text-purple-200 mt-1 opacity-90 font-medium">Powered by Gemini 2.5 Flash</p>
                   </div>
                </div>
                <button 
                   onClick={() => setShowInsight(false)} 
                   className="text-white/70 hover:text-white hover:bg-white/10 p-2 rounded-full transition-colors"
                 >
-                  <X size={24} />
+                  <X size={20} />
                </button>
             </div>
 
             {/* Modal Body */}
-            <div className="p-6 overflow-y-auto custom-scrollbar">
-                {/* Source/Context Box */}
-                <div className="bg-slate-50 border border-slate-200 rounded-lg p-3 mb-5 flex items-start gap-3">
-                   <Info className="text-slate-400 mt-0.5 shrink-0" size={16} />
+            <div className="p-6 overflow-y-auto custom-scrollbar bg-slate-50/30">
+                
+                {/* Source Context Card */}
+                <div className="bg-white border border-slate-200 rounded-xl p-4 mb-6 shadow-sm flex items-start gap-4">
+                   <div className="p-2.5 bg-slate-100 rounded-lg text-slate-500">
+                       <Info size={20} />
+                   </div>
                    <div className="flex-1">
-                      <div className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1">분석 대상 (Source)</div>
-                      <div className="font-bold text-slate-800 text-sm">{log.courseName} ({log.department})</div>
-                      <div className="text-xs text-slate-600 mt-0.5">{log.date} • {log.title}</div>
+                      <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1 flex items-center justify-between">
+                          <span>분석 대상 (Source)</span>
+                          <span className="text-slate-400 font-mono font-normal">{log.date}</span>
+                      </div>
+                      <div className="font-bold text-slate-800 text-sm mb-0.5">{log.courseName} <span className="font-normal text-slate-400">| {log.department}</span></div>
+                      <div className="text-xs text-slate-600 line-clamp-1">{log.title}</div>
                    </div>
                 </div>
 
-                {/* AI Content */}
-                <div className="space-y-4 text-slate-700 text-sm leading-relaxed whitespace-pre-line">
-                    {renderInsightContent(insight)}
+                {/* AI Content - Structured */}
+                <div className="space-y-1">
+                    {renderStructuredInsight(insight)}
                 </div>
             </div>
 
             {/* Modal Footer */}
-            <div className="p-4 bg-slate-50 border-t border-slate-100 flex justify-end shrink-0">
+            <div className="p-4 bg-white border-t border-slate-100 flex justify-end shrink-0">
                <button 
                  onClick={() => setShowInsight(false)} 
-                 className="px-5 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-lg transition-colors text-sm shadow-sm"
+                 className="px-6 py-2.5 bg-slate-800 hover:bg-slate-900 text-white font-bold rounded-xl transition-colors text-sm shadow-md hover:shadow-lg transform active:scale-95 flex items-center"
                >
-                  닫기
+                  <CheckCircle size={16} className="mr-2" />
+                  확인 및 닫기
                </button>
             </div>
           </div>
