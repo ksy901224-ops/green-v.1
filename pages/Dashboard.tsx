@@ -1,17 +1,18 @@
 
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { MOCK_EXTERNAL_EVENTS } from '../constants';
 import LogCard from '../components/LogCard';
 import { CalendarView } from '../components/CalendarView';
 import { CalendarSettingsModal } from '../components/CalendarSettingsModal';
 import { Department, LogEntry, UserRole } from '../types';
-import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2, Search, Sparkles, MessageCircleQuestion } from 'lucide-react';
+import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, LayoutGrid, Users, ArrowUpDown, CheckCircle, PlusCircle, Loader2, Search, Sparkles, MessageCircleQuestion, Clock, Activity, AlertTriangle, ChevronRight, Lock } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { addTodo } from '../services/firestoreService';
 import { searchAppWithAI } from '../services/geminiService';
+import { Link } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
-  const { logs, courses, people, user } = useApp(); // Use shared logs from context
+  const { logs, courses, people, user, canUseAI, canViewFullData } = useApp();
   
   const [filterDept, setFilterDept] = useState<Department | 'ALL'>('ALL');
   const [viewMode, setViewMode] = useState<'list' | 'calendar' | 'course'>('course');
@@ -22,7 +23,6 @@ const Dashboard: React.FC = () => {
   // Sorting state
   const [sortOrder, setSortOrder] = useState<'latest' | 'oldest'>('latest');
   
-  // Separate states for granular control
   const [isGoogleConnected, setIsGoogleConnected] = useState(false);
   const [isOutlookConnected, setIsOutlookConnected] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
@@ -41,7 +41,6 @@ const Dashboard: React.FC = () => {
     const query = queryOverride || aiSearchQuery;
     if (!query.trim()) return;
 
-    // Update input if triggered via suggestion click
     if (queryOverride) setAiSearchQuery(queryOverride);
 
     setIsAiSearching(true);
@@ -72,7 +71,28 @@ const Dashboard: React.FC = () => {
       setIsTodoSubmitting(false);
     }
   };
-  // -------------------------
+
+  // --- Recent Activity Logic ---
+  const recentLogs = useMemo(() => {
+    return [...logs].sort((a, b) => {
+      const tA = a.updatedAt || a.createdAt || 0;
+      const tB = b.updatedAt || b.createdAt || 0;
+      return tB - tA;
+    }).slice(0, 5);
+  }, [logs]);
+
+  const formatTimeAgo = (timestamp?: number) => {
+      if (!timestamp) return '';
+      const seconds = Math.floor((Date.now() - timestamp) / 1000);
+      if (seconds < 60) return '방금 전';
+      const minutes = Math.floor(seconds / 60);
+      if (minutes < 60) return `${minutes}분 전`;
+      const hours = Math.floor(minutes / 60);
+      if (hours < 24) return `${hours}시간 전`;
+      const days = Math.floor(hours / 24);
+      if (days < 7) return `${days}일 전`;
+      return new Date(timestamp).toLocaleDateString();
+  };
 
   // 1. First, filter by Department (applies to all views)
   const deptFilteredLogs = filterDept === 'ALL' 
@@ -88,31 +108,26 @@ const Dashboard: React.FC = () => {
 
   // 3. Apply Date Range / Selection Filters
   const finalDisplayLogs = sortedLogs.filter(l => {
-    // If a specific date is selected in calendar mode, prioritize that
     if (viewMode === 'calendar' && selectedCalendarDate) {
       return l.date === selectedCalendarDate;
     }
-
-    // Otherwise apply range filters
     const matchesStart = !startDate || l.date >= startDate;
     const matchesEnd = !endDate || l.date <= endDate;
     return matchesStart && matchesEnd;
   });
 
-  // Combine external events based on connection status
   const externalEvents = [
     ...(isGoogleConnected ? MOCK_EXTERNAL_EVENTS.filter(e => e.source === 'Google') : []),
     ...(isOutlookConnected ? MOCK_EXTERNAL_EVENTS.filter(e => e.source === 'Outlook') : [])
   ];
 
-  // Get external events for selected date
   const selectedDateExternalEvents = (viewMode === 'calendar' && selectedCalendarDate) 
     ? externalEvents.filter(e => e.date === selectedCalendarDate)
     : [];
 
   const handleDateSelect = (date: string) => {
     if (selectedCalendarDate === date) {
-      setSelectedCalendarDate(null); // Deselect if clicked again
+      setSelectedCalendarDate(null); 
     } else {
       setSelectedCalendarDate(date);
     }
@@ -130,7 +145,6 @@ const Dashboard: React.FC = () => {
 
   const isAnyCalendarConnected = isGoogleConnected || isOutlookConnected;
 
-  // Grouping logic for Course View
   const groupedByCourse = finalDisplayLogs.reduce((acc, log) => {
     const courseName = log.courseName || '미지정';
     if (!acc[courseName]) {
@@ -140,7 +154,6 @@ const Dashboard: React.FC = () => {
     return acc;
   }, {} as Record<string, LogEntry[]>);
 
-  // --- Suggested Queries ---
   const suggestedQueries = [
     '최근 1주일간 스카이뷰 CC 주요 이슈는?',
     '김철수 팀장 관련 기록 요약해줘',
@@ -148,9 +161,58 @@ const Dashboard: React.FC = () => {
     '레이크사이드 관련 최신 영업 기록은?'
   ];
 
-  // Role based access for Widgets
-  const canUseAI = user?.role === UserRole.ADMIN || user?.role === 'SENIOR'; // Assuming 'SENIOR' matches enum value if defined, else strict check
+  // --- SPECIAL VIEW FOR JUNIOR (ISSUES ONLY) ---
+  if (!canViewFullData) {
+      return (
+          <div className="space-y-6">
+              <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+                  <div className="flex items-center space-x-3 mb-4">
+                      <div className="p-2 bg-yellow-100 rounded-full text-yellow-600">
+                          <AlertTriangle size={24} />
+                      </div>
+                      <div>
+                          <h1 className="text-xl font-bold text-slate-900">주요 이슈 현황판</h1>
+                          <p className="text-sm text-slate-500">하급자 권한으로 골프장별 이슈 사항만 조회할 수 있습니다.</p>
+                      </div>
+                  </div>
+              </div>
 
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {courses.map(course => {
+                      const hasIssues = course.issues && course.issues.length > 0;
+                      return (
+                          <div key={course.id} className={`bg-white rounded-xl shadow-sm border p-5 ${hasIssues ? 'border-l-4 border-l-red-400 border-slate-200' : 'border-slate-200 opacity-80'}`}>
+                              <div className="flex justify-between items-start mb-3">
+                                  <h3 className="font-bold text-slate-900 text-lg">{course.name}</h3>
+                                  <Link to={`/courses/${course.id}`} className="text-xs bg-slate-100 px-2 py-1 rounded text-slate-600 hover:bg-slate-200 flex items-center">
+                                      상세보기 <ChevronRight size={12} className="ml-1"/>
+                                  </Link>
+                              </div>
+                              {hasIssues ? (
+                                  <ul className="space-y-2">
+                                      {course.issues?.map((issue, idx) => (
+                                          <li key={idx} className="text-sm text-slate-700 flex items-start">
+                                              <span className="text-red-500 mr-2 mt-1">•</span>
+                                              {issue}
+                                          </li>
+                                      ))}
+                                  </ul>
+                              ) : (
+                                  <p className="text-sm text-slate-400 italic">등록된 주요 이슈가 없습니다.</p>
+                              )}
+                          </div>
+                      );
+                  })}
+              </div>
+              
+              <div className="bg-slate-100 p-4 rounded-lg text-center text-xs text-slate-500 flex items-center justify-center">
+                  <Lock size={12} className="mr-1"/> 상세 업무 일지 및 인물 정보는 상급자/중급자 권한이 필요합니다.
+              </div>
+          </div>
+      );
+  }
+
+  // --- VIEW FOR SENIOR & INTERMEDIATE ---
   return (
     <div className="space-y-6">
       <div className="flex flex-col space-y-4">
@@ -167,27 +229,15 @@ const Dashboard: React.FC = () => {
           </div>
           
           <div className="flex gap-2 self-start md:self-auto">
-             {/* Sort Button (Visible in List/Course mode) */}
              {viewMode !== 'calendar' && (
-                <button
-                  onClick={toggleSort}
-                  className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all"
-                >
+                <button onClick={toggleSort} className="flex items-center px-3 py-1.5 rounded-md text-sm font-medium bg-white text-slate-600 border border-slate-200 hover:bg-slate-50 transition-all">
                   <ArrowUpDown size={16} className="mr-2" />
                   {sortOrder === 'latest' ? '최신순' : '과거순'}
                 </button>
              )}
 
-             {/* Calendar Settings Button */}
              {viewMode === 'calendar' && (
-                <button
-                  onClick={() => setIsSettingsOpen(true)}
-                  className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all border shadow-sm ${
-                    isAnyCalendarConnected
-                      ? 'bg-white text-brand-700 border-brand-200 hover:bg-brand-50' 
-                      : 'bg-white text-slate-500 border-slate-200 hover:text-slate-700 hover:border-slate-300'
-                  }`}
-                >
+                <button onClick={() => setIsSettingsOpen(true)} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all border shadow-sm ${isAnyCalendarConnected ? 'bg-white text-brand-700 border-brand-200 hover:bg-brand-50' : 'bg-white text-slate-500 border-slate-200 hover:text-slate-700 hover:border-slate-300'}`}>
                   <Settings size={16} className="mr-2" />
                   캘린더 연동
                   {isAnyCalendarConnected && (
@@ -199,42 +249,26 @@ const Dashboard: React.FC = () => {
                 </button>
              )}
 
-            {/* View Toggle */}
             <div className="flex bg-slate-100 p-1 rounded-lg">
-              <button
-                onClick={() => setViewMode('list')}
-                className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'list' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
+              <button onClick={() => setViewMode('list')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'list' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 <ListIcon size={16} className="mr-2" /> 목록
               </button>
-              <button
-                onClick={() => setViewMode('course')}
-                className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'course' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
+              <button onClick={() => setViewMode('course')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'course' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 <LayoutGrid size={16} className="mr-2" /> 골프장별
               </button>
-              <button
-                onClick={() => setViewMode('calendar')}
-                className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  viewMode === 'calendar' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-                }`}
-              >
+              <button onClick={() => setViewMode('calendar')} className={`flex items-center px-3 py-1.5 rounded-md text-sm font-medium transition-all ${viewMode === 'calendar' ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
                 <CalendarIcon size={16} className="mr-2" /> 캘린더
               </button>
             </div>
           </div>
         </div>
 
-        {/* --- AI SMART SEARCH WIDGET (Restricted Access) --- */}
+        {/* --- AI SMART SEARCH WIDGET (Senior Only) --- */}
         {canUseAI && (
           <div className="bg-gradient-to-r from-indigo-600 to-purple-700 p-5 rounded-xl shadow-lg text-white">
             <div className="flex items-center mb-3">
               <Sparkles className="text-yellow-300 mr-2" size={20} />
-              <h3 className="font-bold text-lg">AI 통합 데이터 검색</h3>
+              <h3 className="font-bold text-lg">AI 통합 데이터 검색 (상급자 전용)</h3>
             </div>
             <p className="text-indigo-100 text-sm mb-4">
               내부 DB(일지, 인물, 골프장)를 바탕으로 질문에 답변합니다.
@@ -258,17 +292,12 @@ const Dashboard: React.FC = () => {
               </button>
             </form>
 
-            {/* Suggested Queries Chips */}
             <div className="mt-3 flex flex-wrap gap-2 items-center animate-in fade-in slide-in-from-top-1 duration-500">
                <span className="text-xs font-bold text-indigo-200 flex items-center mr-1">
                    <MessageCircleQuestion size={12} className="mr-1"/> 추천 질문:
                </span>
                {suggestedQueries.map((q, idx) => (
-                   <button
-                       key={idx}
-                       onClick={() => handleAiSearch(undefined, q)}
-                       className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white hover:bg-white/20 hover:border-white/30 transition-all cursor-pointer select-none"
-                   >
+                   <button key={idx} onClick={() => handleAiSearch(undefined, q)} className="px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs text-white hover:bg-white/20 hover:border-white/30 transition-all cursor-pointer select-none">
                        {q}
                    </button>
                ))}
@@ -281,77 +310,91 @@ const Dashboard: React.FC = () => {
             )}
           </div>
         )}
-        {/* --------------------------- */}
+        
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* --- To-Do Input Widget (Senior Only) --- */}
+            {canUseAI && (
+              <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm flex flex-col justify-between bg-gradient-to-r from-white to-brand-50/30">
+                <div className="flex items-center space-x-3 mb-3">
+                  <div className="p-2 bg-brand-100 text-brand-600 rounded-lg">
+                    <CheckCircle size={20} />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-sm">오늘의 할 일</h3>
+                    <p className="text-xs text-slate-500">완료 후 DB에 저장됩니다.</p>
+                  </div>
+                </div>
+                <form onSubmit={handleAddTodo} className="flex gap-2">
+                  <input 
+                    type="text" 
+                    value={todoText}
+                    onChange={(e) => setTodoText(e.target.value)}
+                    placeholder="할 일을 입력하세요..."
+                    className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-shadow"
+                  />
+                  <button type="submit" disabled={isTodoSubmitting || !todoText.trim()} className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 flex items-center transition-colors">
+                    {isTodoSubmitting ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} />}
+                  </button>
+                </form>
+              </div>
+            )}
 
-        {/* --- To-Do Input Widget (Restricted Access) --- */}
-        {canUseAI && (
-          <div className="bg-white p-4 rounded-xl border border-brand-100 shadow-sm flex flex-col sm:flex-row items-center gap-4 bg-gradient-to-r from-white to-brand-50/30">
-            <div className="flex items-center space-x-3 shrink-0">
-              <div className="p-2 bg-brand-100 text-brand-600 rounded-lg">
-                <CheckCircle size={20} />
-              </div>
-              <div>
-                <h3 className="font-bold text-slate-800 text-sm">오늘의 할 일</h3>
-                <p className="text-xs text-slate-500">완료 후 DB에 저장됩니다.</p>
-              </div>
+            {/* --- Recent Activity Feed --- */}
+            <div className={`bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col ${!canUseAI ? 'col-span-2' : ''}`}>
+                 <div className="flex items-center justify-between mb-3 border-b border-slate-100 pb-2">
+                    <div className="flex items-center space-x-2">
+                        <Activity size={16} className="text-blue-500" />
+                        <h3 className="font-bold text-slate-800 text-sm">최근 활동 피드</h3>
+                    </div>
+                    <span className="text-xs text-slate-400">실시간</span>
+                 </div>
+                 <div className="flex-1 space-y-3 min-h-[100px] max-h-[160px] overflow-y-auto pr-1 custom-scrollbar">
+                     {recentLogs.length > 0 ? (
+                         recentLogs.map(log => {
+                             const isUpdated = log.updatedAt && log.createdAt && log.updatedAt > log.createdAt + 1000;
+                             const timestamp = log.updatedAt || log.createdAt;
+                             return (
+                                <div key={log.id} className="flex items-start text-xs group">
+                                     <div className={`mt-0.5 w-1.5 h-1.5 rounded-full mr-2 shrink-0 ${isUpdated ? 'bg-orange-400' : 'bg-green-500'}`}></div>
+                                     <div className="flex-1 min-w-0">
+                                         <div className="flex justify-between items-baseline mb-0.5">
+                                             <span className="font-bold text-slate-700 truncate mr-2">{log.courseName}</span>
+                                             <span className="text-[10px] text-slate-400 shrink-0 flex items-center">
+                                                 <Clock size={10} className="mr-0.5"/> {formatTimeAgo(timestamp)}
+                                             </span>
+                                         </div>
+                                         <p className="text-slate-500 truncate group-hover:text-brand-600 transition-colors cursor-pointer">{log.title}</p>
+                                         <div className="text-[10px] text-slate-400 mt-0.5 flex items-center">
+                                             <span className={isUpdated ? 'text-orange-600' : 'text-green-600'}>
+                                                {isUpdated ? '수정됨' : '등록됨'}
+                                             </span>
+                                             <span className="mx-1">•</span>
+                                             <span>{log.author}</span>
+                                         </div>
+                                     </div>
+                                </div>
+                             );
+                         })
+                     ) : (
+                         <div className="text-center py-4 text-slate-400 text-xs">최근 활동 내역이 없습니다.</div>
+                     )}
+                 </div>
             </div>
-            <form onSubmit={handleAddTodo} className="flex-1 w-full flex gap-2">
-              <input 
-                type="text" 
-                value={todoText}
-                onChange={(e) => setTodoText(e.target.value)}
-                placeholder="할 일을 입력하세요..."
-                className="flex-1 border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 transition-shadow"
-              />
-              <button 
-                type="submit" 
-                disabled={isTodoSubmitting || !todoText.trim()}
-                className="bg-brand-600 text-white px-4 py-2 rounded-lg text-sm font-bold hover:bg-brand-700 disabled:opacity-50 flex items-center transition-colors"
-              >
-                {isTodoSubmitting ? <Loader2 size={16} className="animate-spin" /> : <PlusCircle size={16} className="mr-1" />}
-                추가
-              </button>
-            </form>
-          </div>
-        )}
-        {/* ------------------------------------ */}
-
+        </div>
+        
         {/* Filters Bar */}
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4 md:space-y-0 md:flex md:items-center md:justify-between gap-4">
-           {/* Dept Filter */}
            <div className="flex space-x-2 overflow-x-auto pb-1 md:pb-0 no-scrollbar">
-            <button 
-              onClick={() => setFilterDept('ALL')}
-              className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${filterDept === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-            >
-              전체
-            </button>
+            <button onClick={() => setFilterDept('ALL')} className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${filterDept === 'ALL' ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>전체</button>
             {Object.values(Department).map(dept => (
-              <button
-                key={dept}
-                onClick={() => setFilterDept(dept)}
-                className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${filterDept === dept ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-              >
-                {dept}
-              </button>
+              <button key={dept} onClick={() => setFilterDept(dept)} className={`px-3 py-1.5 rounded-full text-xs font-medium whitespace-nowrap transition-colors border ${filterDept === dept ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}>{dept}</button>
             ))}
           </div>
 
-          {/* Date Range Filter */}
           <div className="flex items-center space-x-2 text-sm">
-             <input 
-                type="date" 
-                value={startDate} 
-                onChange={(e) => setStartDate(e.target.value)}
-                className="border border-slate-300 rounded px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
-             />
+             <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500" />
              <span className="text-slate-400">-</span>
-             <input 
-                type="date" 
-                value={endDate} 
-                onChange={(e) => setEndDate(e.target.value)}
-                className="border border-slate-300 rounded px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
-             />
+             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="border border-slate-300 rounded px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500" />
              {(startDate || endDate) && (
                  <button onClick={clearFilters} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-full transition-colors" title="필터 초기화">
                      <X size={16} />
@@ -363,17 +406,10 @@ const Dashboard: React.FC = () => {
 
       {/* Main Content */}
       <div>
-        {/* VIEW MODE: CALENDAR */}
         {viewMode === 'calendar' && (
-          <CalendarView 
-            logs={deptFilteredLogs} 
-            externalEvents={externalEvents}
-            onDateSelect={handleDateSelect}
-            selectedDate={selectedCalendarDate}
-          />
+          <CalendarView logs={deptFilteredLogs} externalEvents={externalEvents} onDateSelect={handleDateSelect} selectedDate={selectedCalendarDate} />
         )}
 
-        {/* VIEW MODE: COURSE GROUPING */}
         {viewMode === 'course' && (
              <div className="space-y-8">
                 {Object.keys(groupedByCourse).length > 0 ? (
@@ -400,7 +436,6 @@ const Dashboard: React.FC = () => {
              </div>
         )}
 
-        {/* VIEW MODE: LIST (Default) */}
         {viewMode === 'list' && (
             <div className="space-y-4">
                 <div className="flex items-center justify-between">
@@ -417,7 +452,6 @@ const Dashboard: React.FC = () => {
                     </span>
                 </div>
 
-                {/* Render External Events specifically for the day if selected */}
                 {selectedDateExternalEvents.length > 0 && (
                 <div className="space-y-2 mb-4">
                     {selectedDateExternalEvents.map(evt => (
@@ -455,7 +489,6 @@ const Dashboard: React.FC = () => {
             </div>
         )}
 
-        {/* Shared Log List when viewed below calendar */}
         {viewMode === 'calendar' && (
             <div className="space-y-4 mt-6">
                <h3 className="font-bold text-slate-800 flex items-center">

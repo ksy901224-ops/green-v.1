@@ -21,7 +21,7 @@ const getDeptColor = (dept: Department) => {
 };
 
 const LogCard: React.FC<LogCardProps> = ({ log }) => {
-  const { deleteLog, user } = useApp();
+  const { deleteLog, user, canUseAI } = useApp();
   const navigate = useNavigate();
   const [insight, setInsight] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -33,7 +33,6 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
     e.stopPropagation();
     
     if (showInsight) {
-      // Don't close if loading, but if open, just focus it
       return;
     }
 
@@ -69,7 +68,6 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
     navigate('/write', { state: { log } });
   };
 
-  // Helper to render bold text from markdown-style **text**
   const renderInsightContent = (text: string) => {
     return text.split(/(\*\*.*?\*\*)/).map((part, index) => {
       if (part.startsWith('**') && part.endsWith('**')) {
@@ -79,7 +77,7 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
     });
   };
 
-  const isAdmin = user?.role === UserRole.ADMIN;
+  const isAdmin = user?.role === UserRole.ADMIN || user?.role === UserRole.SENIOR;
   const shouldTruncate = log.content.length > 100;
 
   return (
@@ -99,7 +97,7 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
               {log.date}
             </div>
             
-            {/* Edit/Delete Actions - Always visible, Restricted to ADMIN only */}
+            {/* Edit/Delete Actions - Restricted to ADMIN/SENIOR */}
             {isAdmin && (
               <div className="flex items-center space-x-1 pl-2 border-l border-slate-100 ml-2">
                 <button 
@@ -178,19 +176,21 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
               <span className="text-xs text-slate-400 font-medium hidden sm:inline-block">
                   작성자: {log.author}
               </span>
-              <button 
-                  onClick={handleAnalyze}
-                  disabled={isLoading}
-                  className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
-                      showInsight 
-                      ? 'bg-purple-100 text-purple-700 border-purple-200 ring-2 ring-purple-100' 
-                      : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 hover:shadow-sm'
-                  }`}
-                  title="이 업무 기록의 맥락과 리스크를 AI로 분석합니다"
-              >
-                  {isLoading ? <Loader2 size={12} className="animate-spin mr-1" /> : <Sparkles size={12} className="mr-1" />}
-                  {isLoading ? '분석 중...' : 'AI Insight'}
-              </button>
+              {canUseAI && (
+                  <button 
+                      onClick={handleAnalyze}
+                      disabled={isLoading}
+                      className={`flex items-center text-xs font-bold px-3 py-1.5 rounded-full border transition-all ${
+                          showInsight 
+                          ? 'bg-purple-100 text-purple-700 border-purple-200 ring-2 ring-purple-100' 
+                          : 'bg-white text-slate-500 border-slate-200 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 hover:shadow-sm'
+                      }`}
+                      title="이 업무 기록의 맥락과 리스크를 AI로 분석합니다"
+                  >
+                      {isLoading ? <Loader2 size={12} className="animate-spin mr-1" /> : <Sparkles size={12} className="mr-1" />}
+                      {isLoading ? '분석 중...' : 'AI Insight'}
+                  </button>
+              )}
           </div>
         </div>
       </div>

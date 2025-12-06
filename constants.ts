@@ -76,6 +76,8 @@ export const MOCK_LOGS: LogEntry[] = [
     title: '하반기 비료 납품 계약 미팅',
     content: '김철수 팀장과 미팅 진행. 경쟁사 대비 단가 이슈가 있었으나, 기술지원 서비스(드론 촬영 등) 포함하여 계약 유력.',
     tags: ['계약', '영업'],
+    createdAt: Date.now() - 3600000 * 2, // 2 hours ago
+    updatedAt: Date.now() - 3600000 * 2,
   },
   {
     id: 'l2',
@@ -88,6 +90,8 @@ export const MOCK_LOGS: LogEntry[] = [
     content: '14번 홀 페어웨이 우측 러프 지역 살포. 3일차 관찰 결과 잡초 변색 시작됨. 사진 첨부함.',
     imageUrls: ['https://picsum.photos/400/300'],
     tags: ['임상', '제초제'],
+    createdAt: Date.now() - 86400000 * 2, // 2 days ago
+    updatedAt: Date.now() - 86400000 * 2,
   },
   {
     id: 'l3',
@@ -99,6 +103,8 @@ export const MOCK_LOGS: LogEntry[] = [
     title: '동코스 5번홀 배수공사 견적 제출',
     content: '현장 실사 완료. 암반 지형이라 굴착 비용이 추가될 것으로 보임. 1차 견적서 제출 완료.',
     tags: ['견적', '공사'],
+    createdAt: Date.now() - 86400000 * 5, // 5 days ago
+    updatedAt: Date.now() - 86400000 * 5,
   },
   {
     id: 'l4',
@@ -110,6 +116,8 @@ export const MOCK_LOGS: LogEntry[] = [
     title: '경영 효율화 컨설팅 착수',
     content: '객단가 상승을 위한 코스 리뉴얼 제안. 야간 라운드 활성화를 위한 조명 교체 필요성 언급.',
     tags: ['경영', '컨설팅'],
+    createdAt: Date.now() - 86400000 * 10, // 10 days ago
+    updatedAt: Date.now() - 86400000 * 10,
   },
 ];
 

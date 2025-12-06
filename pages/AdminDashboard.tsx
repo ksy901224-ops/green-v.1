@@ -12,8 +12,8 @@ const AdminDashboard: React.FC = () => {
 
   // Access Control
   React.useEffect(() => {
-    if (user && user.role !== UserRole.ADMIN) {
-      alert('접근 권한이 없습니다. 관리자만 접근 가능합니다.');
+    if (user && (user.role !== UserRole.ADMIN && user.role !== UserRole.SENIOR)) {
+      alert('접근 권한이 없습니다. 관리자/상급자만 접근 가능합니다.');
       navigate('/');
     }
   }, [user, navigate]);
@@ -27,7 +27,7 @@ const AdminDashboard: React.FC = () => {
     u.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  if (!user || user.role !== UserRole.ADMIN) return null;
+  if (!user || (user.role !== UserRole.ADMIN && user.role !== UserRole.SENIOR)) return null;
 
   const handleApprove = (userId: string, userName: string) => {
     if (window.confirm(`[보안 확인]\n'${userName}' 사용자의 시스템 접근을 승인하시겠습니까?`)) {
@@ -210,13 +210,13 @@ const AdminDashboard: React.FC = () => {
                             <tr key={u.id} className={`hover:bg-slate-50/80 transition-colors ${u.status === 'REJECTED' ? 'bg-red-50/30' : ''}`}>
                                 <td className="px-6 py-4">
                                     <div className="flex items-center">
-                                        <div className={`h-10 w-10 rounded-full flex-shrink-0 overflow-hidden mr-3 border-2 ${u.role === 'ADMIN' ? 'border-purple-200' : 'border-slate-200'}`}>
+                                        <div className={`h-10 w-10 rounded-full flex-shrink-0 overflow-hidden mr-3 border-2 ${u.role === UserRole.SENIOR || u.role === UserRole.ADMIN ? 'border-purple-200' : 'border-slate-200'}`}>
                                             {u.avatar ? <img src={u.avatar} className="w-full h-full object-cover" alt={u.name} /> : <div className="w-full h-full flex items-center justify-center bg-slate-100 text-slate-500 font-bold">{u.name[0]}</div>}
                                         </div>
                                         <div>
                                             <div className="font-bold text-slate-900 flex items-center">
                                                 {u.name}
-                                                {u.role === 'ADMIN' && <Shield size={12} className="ml-1.5 text-purple-600" />}
+                                                {(u.role === UserRole.SENIOR || u.role === UserRole.ADMIN) && <Shield size={12} className="ml-1.5 text-purple-600" />}
                                             </div>
                                             <div className="text-xs text-slate-500 font-mono">{u.email}</div>
                                         </div>
@@ -233,11 +233,13 @@ const AdminDashboard: React.FC = () => {
                                         onChange={(e) => updateUserRole(u.id, e.target.value as UserRole)}
                                         disabled={u.status !== 'APPROVED'}
                                         className={`text-xs border rounded-md py-1.5 px-2 font-medium focus:ring-2 focus:ring-brand-500 focus:border-brand-500 disabled:opacity-50 disabled:cursor-not-allowed ${
-                                            u.role === 'ADMIN' ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-slate-700 border-slate-300'
+                                            u.role === UserRole.SENIOR || u.role === UserRole.ADMIN ? 'bg-purple-50 text-purple-700 border-purple-200' : 'bg-white text-slate-700 border-slate-300'
                                         }`}
                                     >
-                                        <option value={UserRole.USER}>일반 사용자 (User)</option>
-                                        <option value={UserRole.ADMIN}>보안 관리자 (Admin)</option>
+                                        <option value={UserRole.JUNIOR}>하급자 (이슈만 조회)</option>
+                                        <option value={UserRole.INTERMEDIATE}>중급자 (데이터 조회)</option>
+                                        <option value={UserRole.SENIOR}>상급자 (전체 + AI)</option>
+                                        <option value={UserRole.ADMIN}>시스템 관리자</option>
                                     </select>
                                 </td>
                                 <td className="px-6 py-4">
@@ -283,33 +285,6 @@ const AdminDashboard: React.FC = () => {
                 </tbody>
             </table>
         </div>
-      </div>
-
-      {/* Mock Security Logs */}
-      <div className="bg-slate-900 rounded-xl p-6 text-slate-400 font-mono text-xs border border-slate-800">
-          <h3 className="text-slate-200 font-bold mb-4 flex items-center border-b border-slate-800 pb-2">
-              <FileText size={16} className="mr-2"/> Security Audit Logs (Recent Activity)
-          </h3>
-          <div className="space-y-2 opacity-80">
-              <div className="flex">
-                  <span className="text-brand-500 w-32 shrink-0">[SYSTEM]</span>
-                  <span>Dashboard accessed by Admin {user.name}</span>
-              </div>
-              <div className="flex">
-                  <span className="text-blue-500 w-32 shrink-0">[AUTH]</span>
-                  <span>User list loaded successfully ({allUsers.length} records)</span>
-              </div>
-              {pendingUsers.length > 0 && (
-                  <div className="flex">
-                      <span className="text-yellow-500 w-32 shrink-0">[ALERT]</span>
-                      <span className="text-yellow-200">Pending approval requests detected: {pendingUsers.length}</span>
-                  </div>
-              )}
-              <div className="flex">
-                  <span className="text-slate-600 w-32 shrink-0">[INFO]</span>
-                  <span>Audit log initialized at {new Date().toLocaleTimeString()}</span>
-              </div>
-          </div>
       </div>
     </div>
   );

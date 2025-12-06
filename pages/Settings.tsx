@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { Bell, Monitor, User, Save, Moon, Sun, LogOut, Shield, Lock, Users, CheckCircle, XCircle } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
@@ -102,7 +103,9 @@ const Settings: React.FC = () => {
                                                 onChange={(e) => updateUserRole(u.id, e.target.value as UserRole)}
                                                 className="text-xs border-slate-200 rounded py-1 px-2 focus:ring-brand-500"
                                             >
-                                                <option value={UserRole.USER}>사용자</option>
+                                                <option value={UserRole.JUNIOR}>하급자</option>
+                                                <option value={UserRole.INTERMEDIATE}>중급자</option>
+                                                <option value={UserRole.SENIOR}>상급자</option>
                                                 <option value={UserRole.ADMIN}>관리자</option>
                                             </select>
                                         </td>

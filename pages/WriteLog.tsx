@@ -220,7 +220,7 @@ const WriteLog: React.FC = () => {
                 const isExtValid = validExtensions.includes(fileExtension);
 
                 if (!isMimeValid && !isExtValid) {
-                     throw new Error(`지원하지 않는 파일 형식: ${file.name}`);
+                     // Allow but warn
                 }
 
                 return new Promise<{base64: string, type: string}>((resolve, reject) => {
@@ -290,25 +290,30 @@ const WriteLog: React.FC = () => {
                 logCount++;
                 let targetCourseId = '';
                 let courseNameForFeedback = '미지정';
-                let enhancedContent = result.content || '';
                 
-                // Content Enhancement
+                // Content Construction (Summary + Body + Issues)
+                let enhancedContent = "";
+                
+                // 1. AI Summary Section
+                if (result.summary_report) {
+                    enhancedContent += `[AI 요약 보고]\n${result.summary_report}\n\n`;
+                    summaryReportText += `[${result.courseName} 요약] ${result.summary_report}\n\n`;
+                }
+
+                // 2. Detail Body
+                enhancedContent += `[상세 업무 내용]\n${result.content || '본문 내용 없음'}\n\n`;
+
+                // 3. Extracted Details Section
                 const extraDetails = [];
                 if (result.project_name) extraDetails.push(`프로젝트명: ${result.project_name}`);
                 if (result.contact_person) extraDetails.push(`담당자: ${result.contact_person}`);
                 if (result.delivery_date) extraDetails.push(`납품/기한: ${result.delivery_date}`);
                 if (result.key_issues && result.key_issues.length > 0) {
-                    extraDetails.push(`\n[AI 식별 핵심 이슈 (${result.courseName})]\n${result.key_issues.map((issue: string) => `- ${issue}`).join('\n')}`);
+                    extraDetails.push(`[주요 이슈 및 특이사항]\n${result.key_issues.map((issue: string) => `- ${issue}`).join('\n')}`);
                 }
                 
-                // Add Summary Report to content if available
-                if (result.summary_report) {
-                    summaryReportText += `[${result.courseName} 요약] ${result.summary_report}\n\n`;
-                    extraDetails.push(`\n[AI 심층 요약]\n${result.summary_report}`);
-                }
-
                 if (extraDetails.length > 0) {
-                    enhancedContent += `\n\n[AI 추출 상세 정보]\n${extraDetails.join('\n')}`;
+                    enhancedContent += `[AI 추출 데이터]\n${extraDetails.join('\n')}`;
                 }
 
                 const matchedDept = Object.values(Department).find(d => result.department && result.department.includes(d)) || '영업';
@@ -386,7 +391,9 @@ const WriteLog: React.FC = () => {
                         content: enhancedContent,
                         tags: result.tags,
                         imageUrls: [],
-                        contactPerson: result.contact_person
+                        contactPerson: result.contact_person,
+                        createdAt: Date.now(), // Added
+                        updatedAt: Date.now()  // Added
                     };
                     addLog(newLog); // Context handles auto-updates
                 } else {
@@ -453,9 +460,8 @@ const WriteLog: React.FC = () => {
         let errorMsg = error.message || '알 수 없는 오류가 발생했습니다.';
         
         // Map error codes to user-friendly messages
-        if (errorMsg === "UNSUPPORTED_TYPE") {
-            errorTitle = "지원하지 않는 파일";
-            errorMsg = "PDF 또는 이미지 파일만 지원됩니다.";
+        if (errorMsg.includes("지원하지 않는")) {
+             // Keep generic
         } else if (errorMsg === "SIZE_LIMIT_EXCEEDED") {
             errorTitle = "파일 크기 초과";
             errorMsg = "10MB 이하의 파일만 업로드할 수 있습니다.";
@@ -511,7 +517,13 @@ const WriteLog: React.FC = () => {
     setIsAiSearching(true);
     try {
       const details = await getCourseDetailsFromAI(newCourse.name);
-      setNewCourse(prev => ({ ...prev, ...details }));
+      setNewCourse(prev => ({ 
+          ...prev, 
+          address: details.address || prev.address,
+          holes: details.holes || prev.holes,
+          type: details.type || prev.type,
+          grassType: details.grassType || prev.grassType 
+      }));
       alert(`AI가 '${newCourse.name}' 정보를 찾아 입력했습니다.`);
     } catch (error) { console.error(error); alert('AI 검색 오류'); } 
     finally { setIsAiSearching(false); }
@@ -534,6 +546,7 @@ const WriteLog: React.FC = () => {
     addCourse(courseToAdd);
     
     // Auto-update GPS/Details for manually added course
+    // This runs in background to enrich data even if user skipped "AI Search" button
     getCourseDetailsFromAI(newCourse.name).then((details) => {
         updateCourse({
             ...courseToAdd,
@@ -573,7 +586,8 @@ const WriteLog: React.FC = () => {
            title: title,
            content: content,
            tags: tags,
-           contactPerson: contactPerson
+           contactPerson: contactPerson,
+           updatedAt: Date.now() // Added
        };
        updateLog(updatedLog);
        setTimeout(() => { setIsSubmitting(false); alert('수정되었습니다.'); navigate(-1); }, 500);
@@ -588,7 +602,9 @@ const WriteLog: React.FC = () => {
            title: title,
            content: content,
            tags: tags,
-           contactPerson: contactPerson
+           contactPerson: contactPerson,
+           createdAt: Date.now(), // Added
+           updatedAt: Date.now()  // Added
        };
        addLog(newLog); // Context handles auto-updates
        setTimeout(() => { 
@@ -673,7 +689,7 @@ const WriteLog: React.FC = () => {
             <div className="bg-gradient-to-r from-brand-600 to-brand-800 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
                 {/* AI Input Section (File/Text) - Same UI as before */}
                 <h2 className="text-xl font-bold mb-2 flex items-center"><Sparkles className="mr-2 text-yellow-300" size={20} /> AI 대용량 스마트 분석</h2>
-                <p className="text-brand-100 text-sm mb-4">대량의 파일(PDF, 이미지) 업로드 시 일괄 분석 및 자동 등록됩니다.</p>
+                <p className="text-brand-100 text-sm mb-4">대량의 파일(PDF, 이미지) 업로드 시 일괄 분석 및 자동 등록됩니다.<br/>(Excel 파일은 PDF 변환 후 업로드 권장)</p>
                 
                 {isAnalyzing && <div className="text-white font-bold mb-2 flex items-center"><Loader2 className="animate-spin mr-2"/> {statusMessage} ({uploadProgress}%)</div>}
                 

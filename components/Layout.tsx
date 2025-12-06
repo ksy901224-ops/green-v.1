@@ -10,21 +10,27 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { user, logout } = useApp();
+  const { user, logout, canViewFullData } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const location = useLocation();
 
   const navItems = [
     { label: '홈/대시보드', path: '/', icon: <Home size={20} /> },
     { label: '골프장 찾기', path: '/courses', icon: <MapPin size={20} /> },
-    { label: '관계도', path: '/relationship-map', icon: <Share2 size={20} /> },
-    { label: '정보 등록', path: '/write', icon: <PlusSquare size={20} /> },
-    { label: '설정', path: '/settings', icon: <Settings size={20} /> },
   ];
 
-  if (user?.role === UserRole.ADMIN) {
+  // Only show these to Senior and Intermediate users
+  if (canViewFullData) {
+    navItems.push({ label: '관계도', path: '/relationship-map', icon: <Share2 size={20} /> });
+    navItems.push({ label: '정보 등록', path: '/write', icon: <PlusSquare size={20} /> });
+  }
+
+  navItems.push({ label: '설정', path: '/settings', icon: <Settings size={20} /> });
+
+  // Admin/Senior Only Items
+  if (user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN) {
     navItems.push({ label: 'Admin Todo', path: '/admin-todos', icon: <ListChecks size={20} /> });
-    navItems.push({ label: 'Admin 대시보드', path: '/admin-dashboard', icon: <LayoutDashboard size={20} /> });
+    navItems.push({ label: '보안 대시보드', path: '/admin-dashboard', icon: <LayoutDashboard size={20} /> });
   }
 
   const isActive = (path: string) => location.pathname === path;
@@ -64,7 +70,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
             <div className="border-l border-brand-700 pl-4 flex items-center space-x-3">
                <div className="text-right hidden lg:block">
                   <div className="text-sm font-bold leading-none">{user?.name}</div>
-                  <div className="text-[10px] text-brand-300 uppercase mt-0.5">{user?.role}</div>
+                  <div className="text-[10px] text-brand-300 mt-0.5">{user?.role.split('(')[0]}</div>
                </div>
                <div className="w-8 h-8 rounded-full bg-brand-700 border border-brand-500 flex items-center justify-center relative">
                    {user?.avatar ? (
@@ -72,7 +78,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                    ) : (
                      <User size={16} />
                    )}
-                   <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-brand-900 rounded-full ${user?.role === UserRole.ADMIN ? 'bg-yellow-400' : 'bg-blue-400'}`}></span>
+                   <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 border-2 border-brand-900 rounded-full ${user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN ? 'bg-yellow-400' : 'bg-blue-400'}`}></span>
                </div>
                <button 
                  onClick={logout}
@@ -108,10 +114,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                </div>
                <div className="flex-1">
                   <div className="text-white font-bold">{user?.name}</div>
-                  <div className="text-xs text-brand-300">{user?.email}</div>
-               </div>
-               <div className={`px-2 py-0.5 rounded text-[10px] font-bold border ${user?.role === UserRole.ADMIN ? 'bg-yellow-900/30 text-yellow-200 border-yellow-700' : 'bg-blue-900/30 text-blue-200 border-blue-700'}`}>
-                   {user?.role}
+                  <div className="text-xs text-brand-300">{user?.role}</div>
                </div>
             </div>
 
@@ -152,7 +155,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
 
       {/* Footer */}
       <footer className="bg-white border-t py-6 text-center text-slate-500 text-sm">
-        <p>© 2024 GreenMaster Info. Logged in as <span className="font-medium text-slate-700">{user?.name}</span> ({user?.role})</p>
+        <p>© 2024 GreenMaster Info. Logged in as <span className="font-medium text-slate-700">{user?.name}</span></p>
       </footer>
     </div>
   );

@@ -8,8 +8,10 @@ export enum Department {
 }
 
 export enum UserRole {
-  ADMIN = 'ADMIN', // 관리자 (삭제, 설정 변경 등 모든 권한)
-  USER = 'USER',   // 일반 사용자 (조회, 등록 권한)
+  SENIOR = '상급자 (Senior)',       // 모든 권한 + AI 사용
+  INTERMEDIATE = '중급자 (Intermediate)', // 데이터 조회/등록 가능, AI 불가
+  JUNIOR = '하급자 (Junior)',       // 골프장 이슈만 조회 가능
+  ADMIN = '시스템 관리자 (Admin)',   // (Legacy compatibility, acts as Senior)
 }
 
 export type UserStatus = 'PENDING' | 'APPROVED' | 'REJECTED';
@@ -92,6 +94,8 @@ export interface LogEntry {
   imageUrls?: string[];
   tags?: string[]; // e.g., "issue", "urgent", "contract"
   contactPerson?: string; // Added to help tracking people
+  createdAt?: number; // Added: Creation Timestamp
+  updatedAt?: number; // Added: Last Modification Timestamp
 }
 
 export interface ExternalEvent {

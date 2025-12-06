@@ -278,7 +278,7 @@ export const analyzeDocument = async (
 
       [기본 정보 추출]
       2. title: 내용을 요약한 구체적인 제목.
-      3. content: 업무 내용, 현장 상황, 결정 사항 요약.
+      3. content: 업무 내용의 상세 본문을 가능한 누락 없이 추출하세요. 
       4. date: 날짜 (YYYY-MM-DD). 문서 내 날짜가 없으면 오늘.
       
       [스마트 분류 - 부서 및 태그]
@@ -294,7 +294,7 @@ export const analyzeDocument = async (
 
       [심층 분석 (Deep Insights)]
       12. key_issues: 해당 건의 핵심 이슈 3~5가지.
-      13. **summary_report**: (필수) 심층 요약 리포트 (3~4문장).
+      13. **summary_report**: (필수) 전체 내용을 3~4문장으로 요약한 보고서.
 
       [신규 골프장 정보 (New Course Only)]
       14. course_info: **기존 목록에 없는 새로운 골프장인 경우에만** 주소, 홀 수, 타입(회원제/대중제)을 추출.
@@ -318,7 +318,7 @@ export const analyzeDocument = async (
                 type: Type.OBJECT,
                 properties: {
                 title: { type: Type.STRING, description: "문서 제목" },
-                content: { type: Type.STRING, description: "상세 내용 요약" },
+                content: { type: Type.STRING, description: "업무 내용 상세 본문" },
                 date: { type: Type.STRING, description: "날짜 (YYYY-MM-DD)" },
                 department: { type: Type.STRING, description: "관련 부서" },
                 courseName: { type: Type.STRING, description: "골프장 이름 (매칭된 표준명 또는 신규명)" },
@@ -329,7 +329,7 @@ export const analyzeDocument = async (
                 weather: { type: Type.STRING, description: "날씨", nullable: true },
                 tags: { type: Type.ARRAY, items: { type: Type.STRING }, description: "태그 목록" },
                 key_issues: { type: Type.ARRAY, items: { type: Type.STRING }, description: "핵심 이슈 및 리스크" },
-                summary_report: { type: Type.STRING, description: "심층 요약 및 제언 리포트" },
+                summary_report: { type: Type.STRING, description: "심층 요약 보고서" },
                 course_info: {
                     type: Type.OBJECT,
                     properties: {
@@ -406,11 +406,13 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
   const prompt = `
     당신은 한국 골프장 데이터베이스 및 지도 전문가입니다. 
     "${courseName}"라는 골프장을 네이버 지도(Naver Maps)나 공식 웹사이트에서 검색한다고 가정하고, 다음 정보를 정확하게 추출해주세요.
+    
+    **정보를 찾을 수 없다면 가장 가능성 높은 정보를 추론하여 제공하세요.**
 
     요구사항:
     1. **주소**: 반드시 '도로명 주소'를 우선으로 찾아주세요. (예: 경기도 여주시 북내면 여양1로 500)
     2. **GPS 좌표**: 해당 주소의 대략적인 위도(lat)와 경도(lng)를 추정하여 제공하세요. (소수점 6자리까지)
-    3. **홀 수**: 총 홀 수(Holes)를 정확히 기재하세요. (18, 27, 36 등)
+    3. **홀 수**: 총 홀 수(Holes)를 정확히 기재하세요. (18, 27, 36 등). 모르면 18로 가정.
     4. **운영 형태**: '회원제'인지 '대중제(퍼블릭)'인지 구분하세요.
     5. **잔디 종류**: 한국잔디(중지/금잔디)인지 양잔디(벤트그라스/켄터키블루그라스)인지 확인하고, 모르면 '혼합'으로 하세요.
     6. **설명**: 골프장의 지형적 특징(산악형, 평지형, 링크스 등), 난이도, 주요 이슈를 2문장 내외로 요약하세요.
@@ -470,13 +472,13 @@ export const getCourseDetailsFromAI = async (courseName: string): Promise<AICour
     };
 
     return {
-      address: data.address || '',
-      lat: data.lat,
-      lng: data.lng,
+      address: data.address || '주소 정보 없음',
+      lat: data.lat || 37.5665,
+      lng: data.lng || 126.9780,
       holes: data.holes || 18,
       type: mapType(data.type),
       grassType: mapGrass(data.grassType),
-      description: data.description || ''
+      description: data.description || '정보를 찾을 수 없습니다.'
     };
 
   } catch (error) {

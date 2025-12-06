@@ -26,6 +26,10 @@ interface AppContextType {
   addExternalEvent: (event: ExternalEvent) => void;
   refreshLogs: () => void;
   isSimulatedLive: boolean;
+  // Permission Helpers
+  canUseAI: boolean;
+  canViewFullData: boolean;
+  isAdmin: boolean;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -35,7 +39,7 @@ const DEFAULT_ADMIN: UserProfile = {
   id: 'admin-01',
   name: '김관리 (System)',
   email: 'admin@greenmaster.com',
-  role: UserRole.ADMIN,
+  role: UserRole.SENIOR, // Default to Senior/Admin
   department: Department.MANAGEMENT,
   avatar: 'https://ui-avatars.com/api/?name=Admin+Kim&background=0D9488&color=fff',
   status: 'APPROVED'
@@ -75,7 +79,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
       id: `user-${Date.now()}`,
       name,
       email,
-      role: UserRole.USER,
+      role: UserRole.INTERMEDIATE, // Default to Intermediate
       department,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
       status: 'PENDING'
@@ -140,18 +144,11 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   // --- Smart Person Management with Deduplication ---
   const addPerson = (newPerson: Person) => {
     setPeople(prevPeople => {
-      // Normalize name to prevent duplicates (remove spaces, lowercase)
       const normalize = (s: string) => s.trim().replace(/\s+/g, '').toLowerCase();
       const existingIndex = prevPeople.findIndex(p => normalize(p.name) === normalize(newPerson.name));
 
-      // If duplicate found, MERGE instead of create
       if (existingIndex !== -1) {
         const existingPerson = prevPeople[existingIndex];
-        
-        // Smart Merge Logic:
-        // If the new person object has a specific course/role that is different from existing,
-        // we might want to update the existing person to the new role and archive the old one.
-        // This handles cases where AI detects "Kim Chul Soo at SkyView" but DB has "Kim Chul Soo at Lakeside".
         
         let updatedCareers = [...existingPerson.careers];
         const isRoleChanged = newPerson.currentCourseId && (newPerson.currentCourseId !== existingPerson.currentCourseId);
@@ -170,25 +167,19 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
         const merged: Person = {
             ...existingPerson,
-            // Prefer new data if available and non-empty, otherwise keep old
             phone: newPerson.phone || existingPerson.phone,
             currentRole: newPerson.currentRole || existingPerson.currentRole,
             currentCourseId: newPerson.currentCourseId || existingPerson.currentCourseId,
             currentRoleStartDate: newPerson.currentRoleStartDate || existingPerson.currentRoleStartDate,
-            // Update affinity only if new one is explicit (non-neutral 0 could be explicit, but for safety assuming 0 is default)
             affinity: newPerson.affinity !== 0 ? newPerson.affinity : existingPerson.affinity,
-            // Append notes
             notes: existingPerson.notes + (newPerson.notes ? `\n\n[Merged Info]: ${newPerson.notes}` : ''),
             careers: updatedCareers
         };
 
         const newPeopleList = [...prevPeople];
         newPeopleList[existingIndex] = merged;
-        console.log(`[GreenMaster] Merged duplicate person: ${merged.name}`);
         return newPeopleList;
       }
-
-      // No duplicate, add new
       return [...prevPeople, newPerson];
     });
   };
@@ -200,13 +191,20 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
   const addExternalEvent = (event: ExternalEvent) => setExternalEvents(prev => [...prev, event]);
   const refreshLogs = () => {};
 
+  // --- Permission Logic ---
+  const canUseAI = user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN;
+  // Intermediate can view full data, but not use AI. Junior cannot view sensitive data (logs/people).
+  const canViewFullData = user?.role === UserRole.SENIOR || user?.role === UserRole.INTERMEDIATE || user?.role === UserRole.ADMIN;
+  const isAdmin = user?.role === UserRole.SENIOR || user?.role === UserRole.ADMIN;
+
   const value = {
     user, allUsers, login, register, logout, updateUserStatus, updateUserRole,
     logs, courses, people, externalEvents,
     addLog, updateLog, deleteLog,
     addCourse, updateCourse, deleteCourse,
     addPerson, updatePerson,
-    addExternalEvent, refreshLogs, isSimulatedLive
+    addExternalEvent, refreshLogs, isSimulatedLive,
+    canUseAI, canViewFullData, isAdmin
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;
