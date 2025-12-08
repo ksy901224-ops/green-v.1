@@ -1,14 +1,20 @@
 
 import React, { useMemo, useState } from 'react';
 import { useApp } from '../contexts/AppContext';
-import { UserRole, UserStatus, Department } from '../types';
-import { Users, UserPlus, CheckCircle, XCircle, Shield, AlertTriangle, Search, Activity, Ban, RotateCcw, Lock, Unlock, FileText, Siren } from 'lucide-react';
+import { UserRole, UserStatus, Department, UserProfile } from '../types';
+import { Users, UserPlus, CheckCircle, XCircle, Shield, AlertTriangle, Search, Activity, Ban, RotateCcw, Lock, Unlock, FileText, Siren, X, ChevronDown, Briefcase } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 const AdminDashboard: React.FC = () => {
   const { user, allUsers, updateUserStatus, updateUserRole, updateUserDepartment, logs, courses } = useApp();
   const navigate = useNavigate();
   const [searchTerm, setSearchTerm] = useState('');
+
+  // --- Approval Modal State ---
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [targetRole, setTargetRole] = useState<UserRole>(UserRole.INTERMEDIATE);
+  const [targetDept, setTargetDept] = useState<Department>(Department.SALES);
+  const [isProcessing, setIsProcessing] = useState(false);
 
   // Access Control
   React.useEffect(() => {
@@ -19,7 +25,6 @@ const AdminDashboard: React.FC = () => {
   }, [user, navigate]);
 
   const pendingUsers = useMemo(() => allUsers.filter(u => u.status === 'PENDING'), [allUsers]);
-  const approvedUsers = useMemo(() => allUsers.filter(u => u.status === 'APPROVED'), [allUsers]);
   const rejectedUsers = useMemo(() => allUsers.filter(u => u.status === 'REJECTED'), [allUsers]);
 
   const filteredUsers = allUsers.filter(u => 
@@ -29,10 +34,41 @@ const AdminDashboard: React.FC = () => {
 
   if (!user || (user.role !== UserRole.ADMIN && user.role !== UserRole.SENIOR)) return null;
 
-  const handleApprove = (userId: string, userName: string) => {
-    if (window.confirm(`[보안 확인]\n'${userName}' 사용자의 시스템 접근을 승인하시겠습니까?`)) {
-      updateUserStatus(userId, 'APPROVED');
-    }
+  // --- Handlers ---
+
+  const openApprovalModal = (target: UserProfile) => {
+      setSelectedUser(target);
+      setTargetRole(target.role);
+      setTargetDept(target.department);
+  };
+
+  const closeApprovalModal = () => {
+      setSelectedUser(null);
+      setIsProcessing(false);
+  };
+
+  const confirmApproval = async () => {
+      if (!selectedUser) return;
+      setIsProcessing(true);
+      
+      try {
+          // 1. Update Role & Dept first
+          if (selectedUser.role !== targetRole) {
+              await updateUserRole(selectedUser.id, targetRole);
+          }
+          if (selectedUser.department !== targetDept) {
+              await updateUserDepartment(selectedUser.id, targetDept);
+          }
+          // 2. Finally Approve
+          await updateUserStatus(selectedUser.id, 'APPROVED');
+          
+          alert(`${selectedUser.name}님의 가입이 승인되었습니다.\n(권한: ${targetRole}, 부서: ${targetDept})`);
+          closeApprovalModal();
+      } catch (error) {
+          console.error(error);
+          alert('처리 중 오류가 발생했습니다.');
+          setIsProcessing(false);
+      }
   };
 
   const handleReject = (userId: string, userName: string) => {
@@ -65,7 +101,7 @@ const AdminDashboard: React.FC = () => {
   };
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500">
+    <div className="space-y-8 animate-in fade-in duration-500 relative">
       {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between border-b border-slate-200 pb-6">
         <div>
@@ -157,16 +193,16 @@ const AdminDashboard: React.FC = () => {
                         
                         <div className="flex space-x-2 mt-auto">
                             <button 
-                                onClick={() => handleApprove(u.id, u.name)}
+                                onClick={() => openApprovalModal(u)}
                                 className="flex-1 bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-lg text-sm font-bold shadow-sm transition-all hover:shadow-md flex items-center justify-center"
                             >
-                                <CheckCircle size={16} className="mr-1.5"/> 승인 (허용)
+                                <CheckCircle size={16} className="mr-1.5"/> 승인 (설정)
                             </button>
                             <button 
                                 onClick={() => handleReject(u.id, u.name)}
                                 className="flex-1 bg-white border border-red-200 text-red-600 hover:bg-red-50 py-2.5 rounded-lg text-sm font-bold transition-all flex items-center justify-center"
                             >
-                                <Ban size={16} className="mr-1.5"/> 거절 (차단)
+                                <Ban size={16} className="mr-1.5"/> 거절
                             </button>
                         </div>
                     </div>
@@ -293,6 +329,84 @@ const AdminDashboard: React.FC = () => {
             </table>
         </div>
       </div>
+
+      {/* --- Approval Modal --- */}
+      {selectedUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden transform transition-all scale-100">
+                <div className="px-6 py-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                    <h3 className="font-bold text-slate-800 text-lg flex items-center">
+                        <CheckCircle size={20} className="mr-2 text-green-600"/> 승인 처리 설정
+                    </h3>
+                    <button onClick={closeApprovalModal} className="text-slate-400 hover:text-slate-600 p-1 rounded-full hover:bg-slate-200 transition-colors"><X size={20}/></button>
+                </div>
+                
+                <div className="p-6 space-y-6">
+                    <div className="flex items-center space-x-4 bg-brand-50 p-4 rounded-xl border border-brand-100">
+                        <div className="w-12 h-12 rounded-full bg-white border border-brand-200 flex items-center justify-center overflow-hidden shrink-0">
+                            {selectedUser.avatar ? <img src={selectedUser.avatar} className="w-full h-full object-cover" alt="profile"/> : <span className="font-bold text-brand-600 text-lg">{selectedUser.name[0]}</span>}
+                        </div>
+                        <div>
+                            <h4 className="font-bold text-slate-900">{selectedUser.name}</h4>
+                            <p className="text-xs text-slate-500 font-mono">{selectedUser.email}</p>
+                        </div>
+                    </div>
+
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">보안 등급 (Role) 부여</label>
+                            <div className="relative">
+                                <select 
+                                    className="w-full appearance-none bg-white border border-slate-300 rounded-xl py-3 px-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                    value={targetRole}
+                                    onChange={(e) => setTargetRole(e.target.value as UserRole)}
+                                >
+                                    <option value={UserRole.JUNIOR}>하급자 (이슈만 조회)</option>
+                                    <option value={UserRole.INTERMEDIATE}>중급자 (일반 조회/등록)</option>
+                                    <option value={UserRole.SENIOR}>상급자 (AI 기능 포함)</option>
+                                    <option value={UserRole.ADMIN}>시스템 관리자</option>
+                                </select>
+                                <ChevronDown className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" size={16}/>
+                            </div>
+                            <p className="text-[10px] text-slate-400 mt-1 ml-1">* 승인 즉시 해당 권한이 적용됩니다.</p>
+                        </div>
+
+                        <div>
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1.5 ml-1">소속 부서 (Dept) 확정</label>
+                            <div className="relative">
+                                <select 
+                                    className="w-full appearance-none bg-white border border-slate-300 rounded-xl py-3 px-4 pr-10 text-sm focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-brand-500"
+                                    value={targetDept}
+                                    onChange={(e) => setTargetDept(e.target.value as Department)}
+                                >
+                                    {Object.values(Department).map(d => (
+                                        <option key={d} value={d}>{d}</option>
+                                    ))}
+                                </select>
+                                <Briefcase className="absolute right-3 top-3.5 text-slate-400 pointer-events-none" size={16}/>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 border-t border-slate-100 bg-slate-50 flex justify-end space-x-3">
+                    <button 
+                        onClick={closeApprovalModal}
+                        className="px-5 py-2.5 rounded-xl border border-slate-300 text-slate-600 font-bold text-sm hover:bg-slate-100 transition-colors"
+                    >
+                        취소
+                    </button>
+                    <button 
+                        onClick={confirmApproval}
+                        disabled={isProcessing}
+                        className="px-5 py-2.5 rounded-xl bg-green-600 text-white font-bold text-sm hover:bg-green-700 shadow-md hover:shadow-lg transition-all flex items-center"
+                    >
+                        {isProcessing ? '처리 중...' : '최종 승인'}
+                    </button>
+                </div>
+            </div>
+        </div>
+      )}
     </div>
   );
 };
