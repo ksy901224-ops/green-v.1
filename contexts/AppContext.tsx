@@ -111,7 +111,7 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
         if (user) {
             const updatedSelf = fetchedUsers.find(u => u.id === user.id);
             if (updatedSelf) {
-                // Only update if something changed
+                // Check if critical fields changed before updating state/localStorage to avoid loops
                 if(JSON.stringify(updatedSelf) !== JSON.stringify(user)) {
                     setUser(updatedSelf);
                     localStorage.setItem('greenmaster_user', JSON.stringify(updatedSelf));
@@ -131,28 +131,39 @@ export const AppProvider: React.FC<{ children: ReactNode }> = ({ children }) => 
 
   // --- Auth Actions ---
   const login = async (email: string): Promise<string | void> => {
-    const foundUser = allUsers.find(u => u.email.toLowerCase() === email.toLowerCase());
+    // Force a fresh check against allUsers state which is kept in sync
+    const foundUser = allUsers.find(u => u.email.toLowerCase() === email.trim().toLowerCase());
+    
     if (!foundUser) return '등록된 이메일이 아닙니다. 회원가입을 진행해주세요.';
-    if (foundUser.status === 'PENDING') return '계정이 승인 대기 중입니다. 관리자 승인 후 로그인 가능합니다.';
-    if (foundUser.status === 'REJECTED') return '승인이 거절된 계정입니다. 관리자에게 문의하세요.';
+    
+    if (foundUser.status === 'PENDING') {
+        return '현재 관리자 승인 대기 중입니다. 승인이 완료되면 이메일로 알림이 발송됩니다.';
+    }
+    
+    if (foundUser.status === 'REJECTED') {
+        return '가입 요청이 거절되었거나 계정이 차단되었습니다. 관리자에게 문의하세요.';
+    }
 
     setUser(foundUser);
     localStorage.setItem('greenmaster_user', JSON.stringify(foundUser));
   };
 
   const register = async (name: string, email: string, department: Department) => {
-    if (allUsers.some(u => u.email.toLowerCase() === email.toLowerCase())) {
-        throw new Error('이미 등록된 이메일입니다.');
+    // Check local state first for immediate feedback
+    if (allUsers.some(u => u.email.toLowerCase() === email.trim().toLowerCase())) {
+        throw new Error('이미 등록된 이메일입니다. 로그인해주세요.');
     }
+
     const newUser: UserProfile = {
-      id: `user-${Date.now()}`,
+      id: `user-${Date.now()}-${Math.floor(Math.random()*1000)}`,
       name,
-      email,
-      role: UserRole.INTERMEDIATE,
+      email: email.trim(),
+      role: UserRole.INTERMEDIATE, // Default Role
       department,
       avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
       status: 'PENDING'
     };
+    
     // Save to Firestore
     await saveDocument('users', newUser);
   };
