@@ -4,14 +4,11 @@ import { LogEntry, GolfCourse, Person, GrassType, CourseType } from '../types';
 
 // Safety check for API Key
 const getApiKey = () => {
-  if (typeof process !== 'undefined' && process.env && process.env.API_KEY) {
-    return process.env.API_KEY;
-  }
-  return '';
+  return process.env.API_KEY || '';
 };
 
 // Initialize Gemini client
-const ai = new GoogleGenAI({ apiKey: getApiKey() });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 // Helper for retry logic with exponential backoff
 async function retryOperation<T>(
@@ -125,19 +122,28 @@ export const analyzeLogEntry = async (log: LogEntry): Promise<string> => {
     - 내용: ${log.content}
     - 태그: ${log.tags?.join(', ') || '없음'}
 
-    다음 3가지 섹션으로 나누어 간결하게(총 300자 이내) 분석해주세요. 
+    다음 3가지 섹션으로 나누어 간결하게(총 400자 이내) 분석해주세요. 
     가독성을 위해 각 섹션 제목은 **(Bold)** 처리를 해주세요.
 
     1. **📋 핵심 요약**: 
        업무의 본질과 현재 상황을 한 줄로 명확하게 요약하세요.
 
-    2. **🔍 숨겨진 함의/리스크**: 
-       내용에 직접적으로 드러나지 않았지만 유의해야 할 뉘앙스(부정적 징후, 경쟁사 위협, 잠재적 문제)나 놓치고 있는 기회.
-       - **건설사업** 관련일 경우: '견적' 단계라면 수익성과 수주 확률(Winning Probability)을, '공사현황' 단계라면 공기 지연(Delay) 및 안전/품질 리스크를 중점적으로 진단하세요.
-       - **영업** 관련일 경우: 계약 성사 확률과 경쟁사의 움직임을 분석하세요.
+    2. **🔍 숨겨진 함의/리스크 (Hidden Implications)**: 
+       텍스트 이면에 숨겨진 맥락, 잠재적 위험, 또는 기회를 포착하세요.
+       
+       **[부서별 맞춤 분석 지침]**
+       - **건설사업 (CONSTRUCTION)** 관련인 경우 필수 점검:
+         * **공기 지연(Project Delays)**: 날씨, 자재, 인력 문제, 민원 등으로 인한 일정 차질 가능성.
+         * **비용 초과(Cost Overruns)**: 설계 변경, 난공사, 자재가 상승 등으로 인한 예산 초과 리스크.
+         * 현장 안전 및 시공 품질 이슈.
+         
+       - **영업 (SALES)** 관련인 경우 필수 점검:
+         * **경쟁사 전술(Competitive Tactics)**: 경쟁사의 저가 공세, 로비, 신제품 제안, 인맥 플레이 등 위협 요인 감지.
+         * **고객의 숨은 니즈(Hidden Needs)**: 표면적인 거절이나 긍정 뒤에 숨겨진 실제 의도 및 불만 사항(Pain Points).
+         * 계약 성사 확률(Winning Probability) 및 예상되는 장애물.
 
     3. **🚀 추천 액션**: 
-       담당자가 취해야 할 구체적이고 즉각적인 행동 2가지를 제안하세요.
+       담당자가 취해야 할 구체적이고 실행 가능한(Actionable) 행동 2가지를 제안하세요.
   `;
 
   try {

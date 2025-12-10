@@ -1,4 +1,5 @@
-import { GolfCourse, CourseType, GrassType, Person, AffinityLevel, LogEntry, Department, ExternalEvent } from './types';
+
+import { GolfCourse, CourseType, GrassType, Person, AffinityLevel, LogEntry, Department, ExternalEvent, FinancialRecord, MaterialRecord, MaterialCategory } from './types';
 
 export const MOCK_COURSES: GolfCourse[] = [
   {
@@ -138,19 +139,22 @@ export const MOCK_EXTERNAL_EVENTS: ExternalEvent[] = [
     time: '09:00',
     location: '본사 대회의실'
   },
-  {
-    id: 'e3',
-    title: 'CEO 오찬 미팅',
-    date: '2024-05-10',
-    source: 'Google',
-    time: '12:00',
-    location: '강남구'
-  },
-  {
-    id: 'e4',
-    title: '산업 안전 교육',
-    date: '2024-05-02',
-    source: 'Outlook',
-    time: '10:00',
-  }
+];
+
+// --- NEW MOCK DATA ---
+export const MOCK_FINANCIALS: FinancialRecord[] = [
+  { id: 'f1', courseId: 'c1', year: 2023, revenue: 15000000000, profit: 3000000000, updatedAt: Date.now() },
+  { id: 'f2', courseId: 'c1', year: 2022, revenue: 14200000000, profit: 2500000000, updatedAt: Date.now() },
+  { id: 'f3', courseId: 'c1', year: 2021, revenue: 12000000000, profit: 1800000000, updatedAt: Date.now() },
+  
+  { id: 'f4', courseId: 'c2', year: 2023, revenue: 45000000000, profit: 12000000000, updatedAt: Date.now() },
+  { id: 'f5', courseId: 'c2', year: 2022, revenue: 46000000000, profit: 11500000000, updatedAt: Date.now() },
+];
+
+export const MOCK_MATERIALS: MaterialRecord[] = [
+  { id: 'm1', courseId: 'c1', category: MaterialCategory.PESTICIDE, name: '파란들 수화제', quantity: 50, unit: 'kg', lastUpdated: '2024-05-01', supplier: '농협케미컬' },
+  { id: 'm2', courseId: 'c1', category: MaterialCategory.FERTILIZER, name: '복합비료 21-17-17', quantity: 200, unit: '포', lastUpdated: '2024-04-15', supplier: '조비' },
+  { id: 'm3', courseId: 'c1', category: MaterialCategory.GRASS, name: '켄터키 블루그라스 종자', quantity: 10, unit: 'kg', lastUpdated: '2024-03-20', notes: '보식용' },
+  
+  { id: 'm4', courseId: 'c2', category: MaterialCategory.MATERIAL, name: '배수관 100mm', quantity: 50, unit: 'm', lastUpdated: '2024-05-10', notes: '5번홀 공사 잔여분' },
 ];

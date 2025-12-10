@@ -4,11 +4,9 @@ import { getAllTodos, updateTodo, deleteTodo, TodoItem } from '../services/fires
 import { Loader2, Trash2, Check, X, Edit2, Save } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { UserRole } from '../types';
-import { useNavigate } from 'react-router-dom';
 
 const AdminTodo: React.FC = () => {
-  const { user } = useApp();
-  const navigate = useNavigate();
+  const { user, navigate } = useApp();
   const [todos, setTodos] = useState<TodoItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingId, setEditingId] = useState<string | null>(null);

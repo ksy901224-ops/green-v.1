@@ -113,3 +113,45 @@ export interface ExternalEvent {
   courseId?: string; 
   personId?: string;
 }
+
+// --- NEW: System Audit Log ---
+export interface SystemLog {
+  id: string;
+  timestamp: number;
+  userId: string;
+  userName: string;
+  actionType: 'CREATE' | 'UPDATE' | 'DELETE' | 'LOGIN' | 'APPROVE' | 'REJECT';
+  targetType: 'LOG' | 'COURSE' | 'PERSON' | 'USER' | 'FINANCE' | 'MATERIAL';
+  targetName: string; // e.g., Log Title or Person Name
+  details?: string;
+}
+
+// --- NEW: Financial Management ---
+export interface FinancialRecord {
+  id: string;
+  courseId: string;
+  year: number;
+  revenue: number; // Annual Revenue in KRW
+  profit?: number; // Operating Profit in KRW
+  updatedAt: number;
+}
+
+// --- NEW: Material Management ---
+export enum MaterialCategory {
+  PESTICIDE = '농약',
+  FERTILIZER = '비료',
+  GRASS = '잔디/종자',
+  MATERIAL = '기타자재',
+}
+
+export interface MaterialRecord {
+  id: string;
+  courseId: string;
+  category: MaterialCategory;
+  name: string; // Product Name
+  supplier?: string;
+  quantity: number; // Current Stock or Annual Usage
+  unit: string; // kg, L, bags, etc.
+  lastUpdated: string; // YYYY-MM-DD
+  notes?: string;
+}

@@ -1,11 +1,10 @@
 
 import React, { useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Search, MapPin, Flag, ArrowRight } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 
 const CourseList: React.FC = () => {
-  const { courses } = useApp();
+  const { courses, navigate } = useApp();
   const [searchTerm, setSearchTerm] = useState('');
 
   const filteredCourses = courses.filter(c => 
@@ -45,7 +44,11 @@ const CourseList: React.FC = () => {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredCourses.map(course => (
-          <Link to={`/courses/${course.id}`} key={course.id} className="block group h-full">
+          <div 
+             key={course.id} 
+             onClick={() => navigate(`/courses/${course.id}`)}
+             className="block group h-full cursor-pointer"
+          >
             <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden hover:shadow-xl hover:border-brand-200 transition-all duration-300 h-full flex flex-col transform hover:-translate-y-1">
               {/* Card Header / Image Placeholder */}
               <div className={`h-32 bg-gradient-to-r ${getGradient(course.id)} p-6 flex flex-col justify-end relative`}>
@@ -90,7 +93,7 @@ const CourseList: React.FC = () => {
                 </div>
               </div>
             </div>
-          </Link>
+          </div>
         ))}
         
         {filteredCourses.length === 0 && (

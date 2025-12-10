@@ -3,10 +3,9 @@ import React, { useState, useMemo } from 'react';
 import { useApp } from '../contexts/AppContext';
 import { AffinityLevel } from '../types';
 import { Share2, Search, Calendar, Crown, Filter, History, Briefcase, MapPin, RefreshCcw, UserCheck, UserMinus, Shield } from 'lucide-react';
-import { Link } from 'react-router-dom';
 
 const RelationshipMap: React.FC = () => {
-  const { courses, people } = useApp();
+  const { courses, people, navigate } = useApp();
   const [filterAffinity, setFilterAffinity] = useState<AffinityLevel | 'ALL'>('ALL');
   const [filterDept, setFilterDept] = useState<'ALL' | 'MANAGEMENT' | 'COURSE' | 'OPERATIONS' | 'OTHER'>('ALL');
   const [filterStatus, setFilterStatus] = useState<'ALL' | 'CURRENT' | 'PAST'>('ALL');
@@ -339,56 +338,55 @@ const RelationshipMap: React.FC = () => {
                                     </svg>
 
                                     {/* Person Node */}
-                                    <Link to={`/people/${personConn.personId}`}>
-                                        <div 
-                                            className={`absolute transform -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full border bg-slate-900 flex items-center justify-center cursor-pointer transition-all hover:scale-125 hover:z-50 ${isHovered ? 'shadow-[0_0_15px_rgba(255,255,255,0.5)] ring-2 ring-white' : ''} ${isPast ? 'opacity-70 grayscale-[0.5]' : ''}`}
-                                            style={{ left: px, top: py, borderColor: affinityColor }}
-                                            onMouseEnter={() => setHoveredNode({type: 'PERSON', id: `${personConn.personId}-${course.id}`})}
-                                            onMouseLeave={() => setHoveredNode(null)}
-                                        >
-                                            <span className="text-[10px] text-white font-bold leading-none">{personConn.personName[0]}</span>
-                                            
-                                            {/* Status Dot for Affinity */}
-                                            <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-slate-900" style={{ backgroundColor: affinityColor }}></span>
+                                    <div 
+                                        onClick={() => navigate(`/people/${personConn.personId}`)}
+                                        className={`absolute transform -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full border bg-slate-900 flex items-center justify-center cursor-pointer transition-all hover:scale-125 hover:z-50 ${isHovered ? 'shadow-[0_0_15px_rgba(255,255,255,0.5)] ring-2 ring-white' : ''} ${isPast ? 'opacity-70 grayscale-[0.5]' : ''}`}
+                                        style={{ left: px, top: py, borderColor: affinityColor }}
+                                        onMouseEnter={() => setHoveredNode({type: 'PERSON', id: `${personConn.personId}-${course.id}`})}
+                                        onMouseLeave={() => setHoveredNode(null)}
+                                    >
+                                        <span className="text-[10px] text-white font-bold leading-none">{personConn.personName[0]}</span>
+                                        
+                                        {/* Status Dot for Affinity */}
+                                        <span className="absolute -bottom-1 -right-1 w-2.5 h-2.5 rounded-full border border-slate-900" style={{ backgroundColor: affinityColor }}></span>
 
-                                            {/* Past Indicator Icon */}
-                                            {isPast && (
-                                                <div className="absolute -top-3 -right-2 text-slate-400 bg-slate-800 rounded-full p-0.5 border border-slate-600 shadow-sm" title="전직">
-                                                    <History size={10} />
-                                                </div>
-                                            )}
+                                        {/* Past Indicator Icon */}
+                                        {isPast && (
+                                            <div className="absolute -top-3 -right-2 text-slate-400 bg-slate-800 rounded-full p-0.5 border border-slate-600 shadow-sm" title="전직">
+                                                <History size={10} />
+                                            </div>
+                                        )}
 
-                                            {/* Tooltip on Hover */}
-                                            {isHovered && (
-                                                <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-60 bg-white text-slate-900 p-0 rounded-lg shadow-xl border border-slate-200 z-50 animate-in fade-in slide-in-from-bottom-2 pointer-events-none overflow-hidden">
-                                                    <div className="flex justify-between items-center p-3 bg-slate-50 border-b border-slate-100">
-                                                        <span className="font-bold text-sm flex items-center text-slate-800">
-                                                            {personConn.personName}
-                                                            {isPast && <span className="ml-1.5 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300">전직</span>}
-                                                        </span>
-                                                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold text-white shadow-sm`} style={{ backgroundColor: affinityColor }}>
-                                                            {personConn.personAffinity > 0 ? '우호' : personConn.personAffinity < 0 ? '적대' : '중립'}
-                                                        </span>
+                                        {/* Tooltip on Hover */}
+                                        {isHovered && (
+                                            <div className="absolute bottom-10 left-1/2 transform -translate-x-1/2 w-60 bg-white text-slate-900 p-0 rounded-lg shadow-xl border border-slate-200 z-50 animate-in fade-in slide-in-from-bottom-2 pointer-events-none overflow-hidden">
+                                                <div className="flex justify-between items-center p-3 bg-slate-50 border-b border-slate-100">
+                                                    <span className="font-bold text-sm flex items-center text-slate-800">
+                                                        {personConn.personName}
+                                                        {isPast && <span className="ml-1.5 text-[10px] bg-slate-200 text-slate-600 px-1.5 py-0.5 rounded border border-slate-300">전직</span>}
+                                                    </span>
+                                                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold text-white shadow-sm`} style={{ backgroundColor: affinityColor }}>
+                                                        {personConn.personAffinity > 0 ? '우호' : personConn.personAffinity < 0 ? '적대' : '중립'}
+                                                    </span>
+                                                </div>
+                                                
+                                                <div className="p-3 space-y-2">
+                                                    <div className="flex items-center text-xs">
+                                                        <MapPin size={12} className="mr-2 text-brand-600" />
+                                                        <span className="font-bold text-slate-700">{course.name}</span>
                                                     </div>
-                                                    
-                                                    <div className="p-3 space-y-2">
-                                                        <div className="flex items-center text-xs">
-                                                            <MapPin size={12} className="mr-2 text-brand-600" />
-                                                            <span className="font-bold text-slate-700">{course.name}</span>
-                                                        </div>
-                                                        <div className="flex items-center text-xs">
-                                                            <Briefcase size={12} className="mr-2 text-brand-600" />
-                                                            <span className="text-slate-600">{personConn.personRole} <span className="text-slate-400">({personConn.deptCategory})</span></span>
-                                                        </div>
-                                                        <div className="text-[10px] bg-slate-100 p-2 rounded border border-slate-200 flex items-center text-slate-600 mt-1">
-                                                            <Calendar size={10} className="mr-1.5"/> 
-                                                            {isPast ? '근무 기간' : '재직 기간'}: <strong className="ml-1">{getTenure(personConn.startDate, personConn.endDate)}</strong>
-                                                        </div>
+                                                    <div className="flex items-center text-xs">
+                                                        <Briefcase size={12} className="mr-2 text-brand-600" />
+                                                        <span className="text-slate-600">{personConn.personRole} <span className="text-slate-400">({personConn.deptCategory})</span></span>
+                                                    </div>
+                                                    <div className="text-[10px] bg-slate-100 p-2 rounded border border-slate-200 flex items-center text-slate-600 mt-1">
+                                                        <Calendar size={10} className="mr-1.5"/> 
+                                                        {isPast ? '근무 기간' : '재직 기간'}: <strong className="ml-1">{getTenure(personConn.startDate, personConn.endDate)}</strong>
                                                     </div>
                                                 </div>
-                                            )}
-                                        </div>
-                                    </Link>
+                                            </div>
+                                        )}
+                                    </div>
                                  </React.Fragment>
                              );
                         })}

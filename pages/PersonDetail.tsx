@@ -1,14 +1,12 @@
 
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
 import { User, Phone, Briefcase, MapPin, HeartHandshake, ChevronDown, Edit2, X, CheckCircle, Trash2, Plus, ArrowRight, Archive, Sparkles, Cloud } from 'lucide-react';
 import { AffinityLevel, Person, CareerRecord } from '../types';
 import { useApp } from '../contexts/AppContext';
 
 const PersonDetail: React.FC = () => {
-  const { id } = useParams<{ id: string }>();
-  const navigate = useNavigate();
-  const { people, courses, updatePerson, deletePerson, isAdmin } = useApp();
+  const { people, courses, updatePerson, deletePerson, routeParams, navigate } = useApp();
+  const id = routeParams.id;
   
   const person = people.find(p => p.id === id);
   const [expandedItems, setExpandedItems] = useState<Set<number>>(new Set());
@@ -185,7 +183,9 @@ const PersonDetail: React.FC = () => {
       if (window.confirm(`정말로 '${person.name}' 인물 정보를 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.`)) {
           deletePerson(person.id);
           alert('삭제되었습니다.');
-          navigate(-1); // Go back to previous page
+          // Go back to previous page
+          // Simple back implementation via history.back() or navigate to home/list
+          window.history.back();
       }
   };
 

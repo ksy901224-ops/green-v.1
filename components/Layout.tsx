@@ -1,6 +1,5 @@
 
 import React, { useState } from 'react';
-import { Link, useLocation } from 'react-router-dom';
 import { Menu, X, MapPin, Users, Home, PlusSquare, Settings, LogOut, Shield, User, ListChecks, LayoutDashboard, Share2 } from 'lucide-react';
 import { useApp } from '../contexts/AppContext';
 import { UserRole } from '../types';
@@ -10,9 +9,8 @@ interface LayoutProps {
 }
 
 const Layout: React.FC<LayoutProps> = ({ children }) => {
-  const { user, logout, canViewFullData } = useApp();
+  const { user, logout, canViewFullData, currentPath, navigate } = useApp();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-  const location = useLocation();
 
   const navItems = [
     { label: '홈', path: '/', icon: <Home size={18} /> },
@@ -32,7 +30,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
   
   navItems.push({ label: '설정', path: '/settings', icon: <Settings size={18} /> });
 
-  const isActive = (path: string) => location.pathname === path;
+  const isActive = (path: string) => currentPath === path;
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -45,7 +43,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
       {/* Glassmorphism Header */}
       <header className="sticky top-0 z-50 border-b border-white/20 bg-brand-900/90 backdrop-blur-md shadow-sm text-white">
         <div className="max-w-6xl mx-auto px-4 h-16 flex items-center justify-between">
-          <Link to="/" className="flex items-center space-x-2 group focus:outline-none">
+          <a href="#/" onClick={(e) => { e.preventDefault(); navigate('/'); }} className="flex items-center space-x-2 group focus:outline-none">
             <div className="bg-white/10 p-2 rounded-lg group-hover:bg-white/20 transition-all ring-1 ring-white/10">
               <Shield size={20} className="text-brand-200" />
             </div>
@@ -53,15 +51,16 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               <span className="text-lg font-bold tracking-tight leading-none text-white">GreenMaster</span>
               <span className="text-[10px] text-brand-300 font-medium tracking-wider">INTELLIGENCE</span>
             </div>
-          </Link>
+          </a>
 
           {/* Desktop Nav */}
           <div className="hidden md:flex items-center space-x-1 bg-white/5 p-1 rounded-full border border-white/5">
             <nav className="flex items-center">
               {navItems.map((item) => (
-                <Link
+                <a
                   key={item.path}
-                  to={item.path}
+                  href={`#${item.path}`}
+                  onClick={(e) => { e.preventDefault(); navigate(item.path); }}
                   className={`flex items-center space-x-1.5 px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
                     isActive(item.path)
                       ? 'bg-white text-brand-900 shadow-md transform scale-105'
@@ -70,7 +69,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 >
                   {item.icon}
                   <span className="hidden lg:inline">{item.label}</span>
-                </Link>
+                </a>
               ))}
             </nav>
           </div>
@@ -129,10 +128,14 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
               </div>
 
               {navItems.map((item) => (
-                <Link
+                <a
                   key={item.path}
-                  to={item.path}
-                  onClick={() => setIsMobileMenuOpen(false)}
+                  href={`#${item.path}`}
+                  onClick={(e) => {
+                      e.preventDefault();
+                      navigate(item.path);
+                      setIsMobileMenuOpen(false);
+                  }}
                   className={`flex items-center space-x-3 px-4 py-3 rounded-xl text-base font-medium transition-colors ${
                     isActive(item.path)
                       ? 'bg-white text-brand-900 shadow-md'
@@ -141,7 +144,7 @@ const Layout: React.FC<LayoutProps> = ({ children }) => {
                 >
                   {item.icon}
                   <span>{item.label}</span>
-                </Link>
+                </a>
               ))}
 
               <button

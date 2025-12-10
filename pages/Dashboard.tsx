@@ -9,11 +9,9 @@ import { Calendar as CalendarIcon, List as ListIcon, X, CalendarPlus, Settings, 
 import { useApp } from '../contexts/AppContext';
 import { addTodo } from '../services/firestoreService';
 import { searchAppWithAI } from '../services/geminiService';
-import { Link, useNavigate } from 'react-router-dom';
 
 const Dashboard: React.FC = () => {
-  const { logs, courses, people, user, canUseAI, canViewFullData, isAdmin } = useApp();
-  const navigate = useNavigate();
+  const { logs, courses, people, user, canUseAI, canViewFullData, isAdmin, navigate } = useApp();
   
   // Determine default department filter based on user role
   // Senior/Admin starts with 'ALL', Intermediate starts with their department
@@ -161,9 +159,9 @@ const Dashboard: React.FC = () => {
                           <div key={course.id} className={`bg-white rounded-xl shadow-sm border p-6 transition-all hover:shadow-md ${hasIssues ? 'border-l-4 border-l-red-500 border-slate-200' : 'border-slate-200 opacity-80'}`}>
                               <div className="flex justify-between items-start mb-4">
                                   <h3 className="font-bold text-slate-900 text-lg">{course.name}</h3>
-                                  <Link to={`/courses/${course.id}`} className="text-xs bg-slate-100 px-3 py-1.5 rounded-full text-slate-600 hover:bg-slate-200 flex items-center font-medium">
+                                  <button onClick={() => navigate(`/courses/${course.id}`)} className="text-xs bg-slate-100 px-3 py-1.5 rounded-full text-slate-600 hover:bg-slate-200 flex items-center font-medium">
                                       상세보기 <ChevronRight size={14} className="ml-1"/>
-                                  </Link>
+                                  </button>
                               </div>
                               {hasIssues ? (
                                   <ul className="space-y-3">
@@ -171,7 +169,7 @@ const Dashboard: React.FC = () => {
                                           <li 
                                             key={idx} 
                                             className="text-sm text-slate-700 flex items-start bg-red-50 p-2 rounded-lg cursor-pointer hover:bg-red-100 transition-colors group"
-                                            onClick={() => navigate(`/courses/${course.id}`, { state: { filterIssue: issue } })}
+                                            onClick={() => navigate(`/courses/${course.id}`, { filterIssue: issue })}
                                             title="클릭하여 관련 업무 일지 조회"
                                           >
                                               <AlertOctagon size={14} className="text-red-500 mr-2 mt-0.5 shrink-0" />

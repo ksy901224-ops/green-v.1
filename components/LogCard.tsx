@@ -4,7 +4,6 @@ import { LogEntry, Department, UserRole } from '../types';
 import { Calendar, Tag, Image as ImageIcon, Sparkles, Loader2, X, Edit2, Trash2, ChevronDown, ChevronUp, Info, CheckCircle, User, AlertTriangle, Lightbulb, Target } from 'lucide-react';
 import { analyzeLogEntry } from '../services/geminiService';
 import { useApp } from '../contexts/AppContext';
-import { useNavigate } from 'react-router-dom';
 
 interface LogCardProps {
   log: LogEntry;
@@ -21,8 +20,7 @@ const getDeptBadgeStyle = (dept: Department) => {
 };
 
 const LogCard: React.FC<LogCardProps> = ({ log }) => {
-  const { deleteLog, user, canUseAI } = useApp();
-  const navigate = useNavigate();
+  const { deleteLog, user, canUseAI, navigate } = useApp();
   const [insight, setInsight] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [showInsight, setShowInsight] = useState(false);
@@ -59,7 +57,7 @@ const LogCard: React.FC<LogCardProps> = ({ log }) => {
   const handleEdit = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    navigate('/write', { state: { log } });
+    navigate('/write', { log });
   };
 
   // Structured parser for Gemini output
