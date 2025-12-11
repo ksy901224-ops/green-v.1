@@ -1,7 +1,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { Department, GolfCourse, CourseType, GrassType, LogEntry, Person, AffinityLevel, EventType } from '../types';
-import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, CalendarPlus, ChevronDown, Cloud, History, Trash2, RotateCcw, FileSpreadsheet, FileIcon, CheckCircle, AlertOctagon, ArrowRight } from 'lucide-react';
+import { Camera, MapPin, Save, Loader2, FileText, Sparkles, UploadCloud, Plus, X, UserPlus, CalendarPlus, ChevronDown, Cloud, History, Trash2, RotateCcw, FileSpreadsheet, FileIcon, CheckCircle, AlertOctagon, ArrowRight, Building2 } from 'lucide-react';
 import { analyzeDocument } from '../services/geminiService';
 import { useApp } from '../contexts/AppContext';
 
@@ -134,6 +134,9 @@ const WriteLog: React.FC = () => {
       setIsCourseModalOpen(false);
       // Auto select the new course if in manual mode
       if (activeTab === 'LOG') setCourseId(courseId);
+      
+      // Force UI update for AI results
+      // In a real app, 'globalCourses' would update via context, re-rendering the component.
       alert(`${newCourse.name} 골프장이 등록되었습니다.`);
   };
   
@@ -225,32 +228,12 @@ const WriteLog: React.FC = () => {
   };
 
   const saveAnalyzedItem = (idx: number, item: any) => {
-      // 1. Check Course
-      let targetCourseId = '';
+      // 1. Check Course Existence
       const existingCourse = globalCourses.find(c => c.name === item.courseName);
       
-      if (existingCourse) {
-          targetCourseId = existingCourse.id;
-      } else {
-          // Auto-create new course if info available
-          if (item.course_info && confirm(`'${item.courseName}'은(는) 새로운 골프장입니다. 등록하시겠습니까?`)) {
-              const newId = `course-ai-${Date.now()}`;
-              addCourse({
-                  id: newId,
-                  name: item.courseName,
-                  address: item.course_info.address || '주소 미상',
-                  holes: item.course_info.holes || 18,
-                  type: item.course_info.type?.includes('회원') ? CourseType.MEMBER : CourseType.PUBLIC,
-                  grassType: GrassType.ZOYSIA, // Default
-                  openYear: new Date().getFullYear().toString(),
-                  area: '',
-                  description: 'AI 자동 등록됨'
-              });
-              targetCourseId = newId;
-          } else {
-              alert('골프장 정보가 없어 저장을 건너뜁니다.');
-              return;
-          }
+      if (!existingCourse) {
+          alert(`'${item.courseName}' 골프장이 시스템에 없습니다. 먼저 '골프장 신규 등록' 버튼을 눌러 등록해주세요.`);
+          return;
       }
 
       // 2. Save Log
@@ -258,7 +241,7 @@ const WriteLog: React.FC = () => {
           id: `ai-log-${Date.now()}-${idx}`,
           author: 'AI Assistant',
           department: item.department as Department || Department.SALES,
-          courseId: targetCourseId,
+          courseId: existingCourse.id,
           courseName: item.courseName,
           title: item.title,
           content: `${item.content}\n\n[AI 요약 보고서]\n${item.summary_report}`,
@@ -271,6 +254,20 @@ const WriteLog: React.FC = () => {
 
       // 3. Mark as processed
       setProcessedIndices(prev => new Set(prev).add(idx));
+  };
+
+  const openNewCourseModal = (item: any) => {
+      setNewCourse({
+          name: item.courseName,
+          address: item.course_info?.address || '',
+          holes: item.course_info?.holes || 18,
+          type: item.course_info?.type?.includes('회원') ? CourseType.MEMBER : CourseType.PUBLIC,
+          grassType: GrassType.ZOYSIA,
+          area: '',
+          description: 'AI 자동 분석을 통해 등록된 골프장입니다.',
+          openYear: new Date().getFullYear().toString()
+      });
+      setIsCourseModalOpen(true);
   };
 
   const getInputClass = (key: string) => `w-full rounded-xl border py-3 px-4 transition-all outline-none focus:ring-2 focus:ring-brand-500/20 focus:border-brand-500 bg-slate-50 border-slate-200`;
@@ -331,6 +328,7 @@ const WriteLog: React.FC = () => {
                         <div className="inline-flex p-3 bg-indigo-50 text-indigo-600 rounded-full mb-3"><Sparkles size={32} /></div>
                         <h2 className="text-xl font-bold text-slate-900">AI 문서 분석 및 자동 등록</h2>
                         <p className="text-sm text-slate-500 mt-1">업무 보고서(PDF, Excel 스크린샷, 이미지)를 업로드하면 AI가 내용을 분석해 저장합니다.</p>
+                        <p className="text-xs text-indigo-500 mt-2 font-bold">* 다중 파일 동시 분석 지원</p>
                     </div>
 
                     {!isAnalyzing && analysisResults.length === 0 && (
@@ -340,8 +338,8 @@ const WriteLog: React.FC = () => {
                         >
                             <input type="file" multiple accept="image/*,.pdf" className="hidden" ref={fileInputRef} onChange={handleFileSelect} />
                             <UploadCloud size={48} className="mx-auto text-slate-300 group-hover:text-brand-500 mb-4 transition-colors" />
-                            <p className="font-bold text-slate-700">클릭하여 파일 업로드</p>
-                            <p className="text-xs text-slate-400 mt-1">지원 형식: JPG, PNG, PDF (최대 25MB)</p>
+                            <p className="font-bold text-slate-700">클릭하여 파일 업로드 (다중 선택 가능)</p>
+                            <p className="text-xs text-slate-400 mt-1">지원 형식: PDF, JPG, PNG (Excel 파일은 PDF 변환 또는 스크린샷 권장)</p>
                             
                             {selectedFiles.length > 0 && (
                                 <div className="mt-6 flex flex-wrap justify-center gap-2">
@@ -361,7 +359,7 @@ const WriteLog: React.FC = () => {
                             onClick={startAnalysis}
                             className="w-full bg-indigo-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-indigo-700 transition-all shadow-lg flex justify-center items-center"
                         >
-                            <Sparkles size={20} className="mr-2" /> 분석 시작하기
+                            <Sparkles size={20} className="mr-2" /> 분석 시작하기 ({selectedFiles.length}개 파일)
                         </button>
                     )}
 
@@ -369,7 +367,7 @@ const WriteLog: React.FC = () => {
                         <div className="py-20 text-center">
                             <Loader2 size={48} className="mx-auto text-indigo-600 animate-spin mb-4" />
                             <h3 className="text-lg font-bold text-slate-800">AI가 문서를 분석 중입니다...</h3>
-                            <p className="text-slate-500 text-sm">내용 추출 및 골프장 정보 매칭 중</p>
+                            <p className="text-slate-500 text-sm">내용 추출 및 신규 골프장 식별 중</p>
                         </div>
                     )}
 
@@ -383,7 +381,8 @@ const WriteLog: React.FC = () => {
                             <div className="space-y-4">
                                 {analysisResults.map((item, idx) => {
                                     const isProcessed = processedIndices.has(idx);
-                                    const isNewCourse = !globalCourses.some(c => c.name === item.courseName);
+                                    const existsInSystem = globalCourses.some(c => c.name === item.courseName);
+                                    const isNewCourse = !existsInSystem;
 
                                     return (
                                         <div key={idx} className={`border rounded-xl p-5 transition-all ${isProcessed ? 'bg-slate-50 border-slate-200 opacity-60' : 'bg-white border-indigo-100 shadow-sm hover:shadow-md'}`}>
@@ -391,27 +390,53 @@ const WriteLog: React.FC = () => {
                                                 <div className="flex items-center gap-2">
                                                     <span className="px-2 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded">{item.date}</span>
                                                     <span className="px-2 py-1 bg-indigo-50 text-indigo-600 text-xs font-bold rounded">{item.department}</span>
+                                                    
                                                     {isNewCourse && !isProcessed && (
-                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded flex items-center">
-                                                            <AlertOctagon size={10} className="mr-1"/> 신규 골프장 감지
+                                                        <span className="px-2 py-1 bg-yellow-100 text-yellow-700 text-xs font-bold rounded flex items-center border border-yellow-200">
+                                                            <AlertOctagon size={12} className="mr-1"/> 미등록 골프장 감지
                                                         </span>
                                                     )}
                                                 </div>
+                                                
                                                 {isProcessed ? (
-                                                    <span className="text-green-600 text-sm font-bold flex items-center"><CheckCircle size={16} className="mr-1"/> 저장됨</span>
+                                                    <span className="text-green-600 text-sm font-bold flex items-center"><CheckCircle size={16} className="mr-1"/> 저장 완료</span>
+                                                ) : isNewCourse ? (
+                                                    <button onClick={() => openNewCourseModal(item)} className="bg-yellow-500 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-yellow-600 transition-colors flex items-center shadow-sm">
+                                                        <Building2 size={14} className="mr-1"/> 골프장 신규 등록
+                                                    </button>
                                                 ) : (
-                                                    <button onClick={() => saveAnalyzedItem(idx, item)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center">
-                                                        {isNewCourse ? <><Plus size={14} className="mr-1"/> 골프장 및 일지 등록</> : <><Save size={14} className="mr-1"/> 저장하기</>}
+                                                    <button onClick={() => saveAnalyzedItem(idx, item)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-xs font-bold hover:bg-indigo-700 transition-colors flex items-center shadow-sm">
+                                                        <Save size={14} className="mr-1"/> 저장하기
                                                     </button>
                                                 )}
                                             </div>
                                             
-                                            <h4 className="font-bold text-slate-900 mb-1">{item.courseName} <span className="font-normal text-slate-400">|</span> {item.title}</h4>
+                                            <h4 className="font-bold text-slate-900 mb-1 flex items-center">
+                                                {item.courseName} 
+                                                {isNewCourse && !isProcessed && (
+                                                    <span className="ml-2 text-[10px] font-normal text-slate-400 bg-slate-100 px-1.5 rounded">시스템에 없음</span>
+                                                )}
+                                                <span className="mx-2 text-slate-300">|</span> 
+                                                {item.title}
+                                            </h4>
+                                            
                                             <p className="text-sm text-slate-600 line-clamp-2 mb-3">{item.content}</p>
                                             
+                                            {/* AI Summary Preview */}
                                             {item.summary_report && (
-                                                <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-600 border border-slate-200">
-                                                    <strong>AI 요약:</strong> {item.summary_report}
+                                                <div className="bg-slate-50 p-3 rounded-lg text-xs text-slate-600 border border-slate-200 flex gap-2">
+                                                    <Sparkles size={14} className="text-indigo-400 shrink-0 mt-0.5"/>
+                                                    <div>
+                                                        <strong className="block text-slate-700 mb-1">AI 요약 리포트</strong>
+                                                        {item.summary_report}
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* New Course Details Preview */}
+                                            {isNewCourse && !isProcessed && item.course_info && (
+                                                <div className="mt-3 p-2 bg-yellow-50 border border-yellow-100 rounded text-xs text-yellow-800">
+                                                    <strong>추출된 골프장 정보:</strong> {item.course_info.address} / {item.course_info.holes}홀 / {item.course_info.type}
                                                 </div>
                                             )}
                                         </div>
@@ -550,6 +575,10 @@ const WriteLog: React.FC = () => {
                              <option value="대중제">대중제</option>
                          </select>
                      </div>
+                 </div>
+                 <div>
+                     <label className="block text-xs font-bold text-slate-500 mb-1">설명 / 비고</label>
+                     <textarea className="w-full border rounded-lg p-2 text-sm" rows={2} value={newCourse.description} onChange={(e) => handleCourseChange('description', e.target.value)} />
                  </div>
              </div>
 
