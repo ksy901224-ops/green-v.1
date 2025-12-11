@@ -1,4 +1,3 @@
-
 {
   "name": "greenmaster-info",
   "private": true,
@@ -15,8 +14,11 @@
     "react-router-dom": "^6.22.0",
     "firebase": "^10.8.0",
     "lucide-react": "^0.330.0",
-    "@google/genai": "*",
+    "@google/genai": "latest",
     "tailwindcss": "^3.4.1"
+  },
+  "overrides": {
+    "@google/genai": "latest"
   },
   "devDependencies": {
     "@types/react": "^18.2.55",
