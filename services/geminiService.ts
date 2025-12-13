@@ -7,8 +7,8 @@ const getApiKey = () => {
   return process.env.API_KEY || '';
 };
 
-// Initialize Gemini client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Initialize Gemini client with fallback to empty string to prevent startup crash
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
 
 // Helper for retry logic with exponential backoff
 async function retryOperation<T>(

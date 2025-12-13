@@ -1,3 +1,4 @@
+
 import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 
@@ -12,9 +13,10 @@ export default defineConfig(({ mode }) => {
       outDir: 'dist',
     },
     define: {
-      // Polyfill process.env for libraries or code relying on it (like the Gemini usage)
+      // Polyfill process.env for libraries or code relying on it.
+      // IMPORTANT: Values must be JSON.stringify() to be inserted as strings in the code.
       'process.env': {
-        API_KEY: env.API_KEY,
+        API_KEY: JSON.stringify(env.API_KEY || ''),
         NODE_ENV: JSON.stringify(mode),
       }
     }
